@@ -33,11 +33,8 @@
 		onclick={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			console.log('LaunchButton clicked!', { onDeploy: typeof onDeploy, countdown, deployConnecting });
 			if (onDeploy) {
 				onDeploy();
-			} else {
-				console.error('onDeploy is not available!');
 			}
 		}}
 		onmousedown={(e) => {

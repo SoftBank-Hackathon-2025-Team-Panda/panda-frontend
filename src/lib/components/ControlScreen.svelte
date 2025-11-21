@@ -6,10 +6,6 @@
 
   let { countdown = null, inputValue = "" }: Props = $props();
 
-  // 디버깅용
-  $effect(() => {
-    console.log("ControlScreen countdown changed:", countdown);
-  });
 </script>
 
 <div

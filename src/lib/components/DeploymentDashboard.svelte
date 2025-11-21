@@ -17,9 +17,9 @@
 		deploymentId: string;
 		result?: {
 			status: string;
-			message: string;
+			message?: string;
 			details?: Record<string, unknown>;
-		};
+		} | null;
 		onReset?: () => void;
 	}
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 
-	let { title, open = $bindable(false) } = $props();
+	let { title, open = $bindable(false), children }: { title?: string; open?: boolean; children?: import('svelte').Snippet } = $props();
 
 	const dispatch = createEventDispatcher();
 
@@ -72,7 +72,9 @@
 
 			<!-- Content -->
 			<div class="relative z-10">
-				<slot />
+				{#if children}
+					{@render children()}
+				{/if}
 			</div>
 		</div>
 	</div>

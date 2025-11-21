@@ -139,27 +139,22 @@ export function createSSEConnection(deploymentId: string): EventSource {
 	// 특정 이벤트 타입별 핸들러 (필요시)
 	eventSource.addEventListener('docker', (event: MessageEvent) => {
 		const data: DeploymentEvent = JSON.parse(event.data);
-		console.log('Docker event:', data);
 	});
 
 	eventSource.addEventListener('ecr', (event: MessageEvent) => {
 		const data: DeploymentEvent = JSON.parse(event.data);
-		console.log('ECR event:', data);
 	});
 
 	eventSource.addEventListener('ecs', (event: MessageEvent) => {
 		const data: DeploymentEvent = JSON.parse(event.data);
-		console.log('ECS event:', data);
 	});
 
 	eventSource.addEventListener('codedeploy', (event: MessageEvent) => {
 		const data: DeploymentEvent = JSON.parse(event.data);
-		console.log('CodeDeploy event:', data);
 	});
 
 	eventSource.addEventListener('bluegreen', (event: MessageEvent) => {
 		const data: DeploymentEvent = JSON.parse(event.data);
-		console.log('Blue/Green event:', data);
 	});
 
 

@@ -3,9 +3,10 @@
 		open?: boolean;
 		disableClose?: boolean; // 배포 진행 중일 때 닫기 방지
 		backgroundTheme?: 'default' | 'brown'; // 배경 테마
+		children?: import('svelte').Snippet;
 	}
 
-	let { open = $bindable(false), disableClose = false, backgroundTheme = 'default' }: Props = $props();
+	let { open = $bindable(false), disableClose = false, backgroundTheme = 'default', children }: Props = $props();
 
 	function handleClose() {
 		if (!disableClose) {
@@ -81,7 +82,9 @@
 
 			<!-- 모달 내용 -->
 			<div class="relative z-10 p-8 h-full flex items-stretch">
-				<slot />
+				{#if children}
+					{@render children()}
+				{/if}
 			</div>
 		</div>
 	</div>

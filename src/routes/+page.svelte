@@ -1,24 +1,27 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { deploymentConfig, currentDeployment } from "$lib/stores/deployment";
+  import { deploymentConfig, currentDeployment, type DeploymentConfig } from "$lib/stores/deployment";
   import {
     deploymentEvents,
     createSSEConnection,
     closeSSEConnection,
-    type DeploymentEvent,
-    type DeploymentEventType,
   } from "$lib/stores/sse";
   import {
     connectGitHub,
     connectAWS,
     startDeployment,
     getDeploymentResult,
+    getConnections,
+    type GitHubConnectionInfo,
+    type AWSConnectionInfo,
+    type DeploymentResultData,
   } from "$lib/api/client";
   import Modal from "$lib/components/Modal.svelte";
   import LaunchModal from "$lib/components/LaunchModal.svelte";
   import SpaceBackground from "$lib/components/SpaceBackground.svelte";
   import ControlPanel from "$lib/components/ControlPanel.svelte";
   import DeploymentDashboard from "$lib/components/DeploymentDashboard.svelte";
+  import DeploymentSpaceships from "$lib/components/DeploymentSpaceships.svelte";
   import Swal from "sweetalert2";
 
   let githubOwner = $state("");
@@ -41,21 +44,7 @@
   let launchModalOpen = $state(false);
   let countdown = $state<number | null>(null);
 
-  // 더미: 연결 완료 상태로 설정 (테스트용)
-  let config = $state({
-    github: {
-      connected: true,
-      connectionId: "dummy-github-id",
-      owner: "dummy-owner",
-      repo: "dummy-repo",
-      branch: "main",
-    },
-    aws: { connected: true, connectionId: "dummy-aws-id" },
-    readyToDeploy: true,
-  });
-
-  // 기존 코드 (주석처리)
-  // let config = $state({ github: { connected: false }, aws: { connected: false }, readyToDeploy: false });
+  let config = $state<DeploymentConfig>({ github: { connected: false }, aws: { connected: false }, readyToDeploy: false });
   let currentDeploymentState = $state({
     deploymentId: null as string | null,
     isActive: false,
@@ -80,39 +69,33 @@
   });
 
 	let eventSource: EventSource | null = null;
-	let result = $state<any>(null);
+	let result = $state<DeploymentResultData | null>(null);
+
 	let buttonPressed = $state(false);
+	let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
   // Store 구독 및 초기화
   onMount(() => {
-    // localStorage에서 배포 상태 복원
-    const savedDeployment = localStorage.getItem("currentDeployment");
-    if (savedDeployment) {
-      try {
-        const parsed = JSON.parse(savedDeployment);
-        if (parsed.isActive && parsed.deploymentId) {
-          currentDeploymentState = parsed;
-          currentDeployment.set(parsed);
-          // SSE 연결 시작
-          eventSource = createSSEConnection(parsed.deploymentId);
-        }
-      } catch (e) {
-        console.error("Failed to parse saved deployment:", e);
-      }
-    }
-
-    // Store 구독 (더미 모드에서는 주석처리)
-    // const unsubscribeConfig = deploymentConfig.subscribe((value) => {
-    // 	config = value;
-    // });
-    const unsubscribeConfig = () => {}; // 더미: 빈 함수
+    // Store 구독
+    const unsubscribeConfig = deploymentConfig.subscribe((value) => {
+      config = value;
+    });
 
     const unsubscribeDeployment = currentDeployment.subscribe((value) => {
       currentDeploymentState = value;
+      // 활성 배포가 있으면 SSE 연결 및 polling 시작
       if (value.isActive && value.deploymentId) {
-        localStorage.setItem("currentDeployment", JSON.stringify(value));
-      } else {
-        localStorage.removeItem("currentDeployment");
+        if (!eventSource) {
+          eventSource = createSSEConnection(value.deploymentId);
+        }
+        // polling 시작 (이미 실행 중이면 중복 방지)
+        if (value.deploymentId && !pollingInterval) {
+          startPolling(value.deploymentId);
+        }
+      } else if (!value.isActive && eventSource) {
+        // 배포가 비활성화되면 SSE 연결만 종료, polling은 계속
+        closeSSEConnection(eventSource);
+        eventSource = null;
       }
     });
 
@@ -120,34 +103,59 @@
       events = value;
     });
 
-    // 배포 완료 시 결과 조회
-    const checkResult = async () => {
-      if (events.isComplete && currentDeploymentState.deploymentId) {
-        try {
-          result = await getDeploymentResult(
-            currentDeploymentState.deploymentId
-          );
-          if (result.status === "failed") {
-            events.hasError = true;
-          }
-          // 배포 완료 후 일정 시간 후 초기화
-          setTimeout(() => {
-            currentDeployment.set({ deploymentId: null, isActive: false });
-            localStorage.removeItem("currentDeployment");
-          }, 5000);
-        } catch (error) {
-          console.error("Failed to get deployment result:", error);
-        }
+    // 배포 결과 polling (5초마다)
+    const startPolling = (deploymentId: string) => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
       }
+
+      const poll = async () => {
+        try {
+          const deploymentResult = await getDeploymentResult(deploymentId);
+          result = deploymentResult;
+
+          // 배포가 완료되거나 실패한 경우 SSE 연결만 종료, polling은 계속
+          if (deploymentResult.status === "completed" || deploymentResult.status === "failed") {
+            // SSE 연결 종료
+            if (eventSource) {
+              closeSSEConnection(eventSource);
+              eventSource = null;
+            }
+            // isActive는 false로 설정
+            currentDeployment.set({
+              deploymentId: deploymentId,
+              isActive: false
+            });
+          }
+        } catch (error) {
+          console.error("Failed to poll deployment result:", error);
+        }
+      };
+
+      // 즉시 한 번 실행
+      poll();
+      // 5초마다 polling
+      pollingInterval = setInterval(poll, 5000);
     };
 
-    const interval = setInterval(checkResult, 2000);
+    // localStorage에서 deploymentId가 있으면 polling 시작
+    const savedDeploymentId = localStorage.getItem("deploymentId");
+    if (savedDeploymentId) {
+      startPolling(savedDeploymentId);
+    }
+
+    // 초기 상태 조회: 연결 정보 및 localStorage에서 배포 상태 복원
+    fetchConnections();
+    restoreDeploymentFromStorage();
 
     return () => {
       unsubscribeConfig();
       unsubscribeDeployment();
       unsubscribeEvents();
-      clearInterval(interval);
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
     };
   });
 
@@ -157,466 +165,185 @@
 		}
 	});
 
-  // 기존 코드 (주석처리)
-  /*
-	async function handleGitHubConnect() {
-		if (!githubOwner || !githubRepo || !githubToken) {
-			githubError = '모든 필드를 입력해주세요.';
-			return;
-		}
+  // 연결 정보 조회 및 상태 업데이트
+  async function fetchConnections() {
+    try {
+      const connections = await getConnections();
 
-		githubConnecting = true;
-		githubError = '';
+      // GitHub 연결 정보 업데이트 (가장 최근 연결 사용 - 첫 번째 요소)
+      const latestGitHub = connections.github && connections.github.length > 0
+        ? connections.github[0]
+        : null;
 
-		try {
-			const response = await connectGitHub({
-				owner: githubOwner,
-				repo: githubRepo,
-				branch: githubBranch,
-				token: githubToken
-			});
+      // AWS 연결 정보 업데이트 (가장 최근 연결 사용 - 첫 번째 요소)
+      const latestAWS = connections.aws && connections.aws.length > 0
+        ? connections.aws[0]
+        : null;
 
-			deploymentConfig.update((config) => ({
-				...config,
-				github: {
-					connected: true,
-					connectionId: response.githubConnectionId,
-					owner: githubOwner,
-					repo: githubRepo,
-					branch: githubBranch
-				},
-				readyToDeploy: config.aws.connected
-			}));
+      deploymentConfig.update((currentConfig) => ({
+        github: latestGitHub
+          ? {
+              connected: true,
+              connectionId: latestGitHub.connectionId,
+              owner: latestGitHub.owner,
+              repo: latestGitHub.repo,
+              branch: latestGitHub.branch,
+            }
+          : { connected: false },
+        aws: latestAWS
+          ? {
+              connected: true,
+              connectionId: latestAWS.connectionId,
+              region: latestAWS.region,
+            }
+          : { connected: false },
+        readyToDeploy: (latestGitHub !== null) && (latestAWS !== null),
+      }));
+    } catch (error) {
+      console.error("Failed to fetch connections:", error);
+      // 에러가 발생해도 기존 상태 유지
+    }
+  }
 
-			githubModalOpen = false;
-		} catch (error) {
-			githubError = error instanceof Error ? error.message : 'GitHub 연결에 실패했습니다.';
-			console.error('GitHub connection error:', error);
-		} finally {
-			githubConnecting = false;
-		}
-	}
-	*/
+  // localStorage에서 배포 상태 복원
+  async function restoreDeploymentFromStorage() {
+    const savedDeploymentId = localStorage.getItem("deploymentId");
 
-  // 더미 함수 (테스트용)
-  async function handleGitHubConnect() {
-    if (config.github.connected) {
-      Swal.fire({
-        icon: "info",
-        title: "이미 연결됨",
-        text: "GitHub는 이미 연결되어 있습니다.",
-        confirmButtonColor: "#dc2626",
-        confirmButtonText: "확인",
-      });
+    if (!savedDeploymentId) {
       return;
     }
-    // 더미: 연결 완료 상태로 설정
+
+    try {
+      // 배포 상태 확인
+      const deploymentResult = await getDeploymentResult(savedDeploymentId);
+      result = deploymentResult;
+
+      if (deploymentResult.status === "completed" || deploymentResult.status === "failed") {
+        // 배포가 끝나있으면 SSE 연결 종료하지만 deploymentId는 유지 (polling을 위해)
+        if (eventSource) {
+          closeSSEConnection(eventSource);
+          eventSource = null;
+        }
+        // isActive는 false로 설정하되 deploymentId는 유지
+        currentDeployment.set({
+          deploymentId: savedDeploymentId,
+          isActive: false
+        });
+      } else if (deploymentResult.status === "in-progress") {
+        // 진행중이면 진행중인 상태부터 시작
+        currentDeployment.set({
+          deploymentId: savedDeploymentId,
+          isActive: true,
+        });
+        // SSE 연결은 store 구독에서 자동으로 처리됨
+      }
+    } catch (error) {
+      console.error("Failed to restore deployment from storage:", error);
+    }
+  }
+
+  async function handleGitHubConnect() {
+    if (!githubOwner || !githubRepo || !githubToken) {
+      githubError = '모든 필드를 입력해주세요.';
+      return;
+    }
+
     githubConnecting = true;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    config = {
-      ...config,
-      github: {
-        connected: true,
-        connectionId: "dummy-github-id",
+    githubError = '';
+
+    try {
+      const response = await connectGitHub({
         owner: githubOwner,
         repo: githubRepo,
         branch: githubBranch,
-      },
-      readyToDeploy: config.aws.connected,
-    };
-    githubConnecting = false;
-    githubModalOpen = false;
-    Swal.fire("GitHub 연결 성공!", "", "success");
-  }
+        token: githubToken
+      });
 
-  // 기존 코드 (주석처리)
-  /*
-	async function handleAWSConnect() {
-		if (!awsAccessKey || !awsSecretKey || !awsRegion) {
-			awsError = '모든 필드를 입력해주세요.';
-			return;
-		}
+      // 연결 성공 후 서버에서 최신 연결 정보 조회
+      await fetchConnections();
 
-		awsConnecting = true;
-		awsError = '';
-
-		try {
-			const response = await connectAWS({
-				region: awsRegion,
-				accessKeyId: awsAccessKey,
-				secretAccessKey: awsSecretKey
-			});
-
-			deploymentConfig.update((config) => ({
-				...config,
-				aws: {
-					connected: true,
-					connectionId: response.awsConnectionId,
-					region: awsRegion
-				},
-				readyToDeploy: config.github.connected
-			}));
-
-			awsModalOpen = false;
-		} catch (error) {
-			awsError = error instanceof Error ? error.message : 'AWS 연결에 실패했습니다.';
-			console.error('AWS connection error:', error);
-		} finally {
-			awsConnecting = false;
-		}
-	}
-	*/
-
-  // 더미 함수 (테스트용)
-  async function handleAWSConnect() {
-    if (config.aws.connected) {
+      githubModalOpen = false;
       Swal.fire({
-        icon: "info",
-        title: "이미 연결됨",
-        text: "AWS는 이미 연결되어 있습니다.",
+        icon: "success",
+        title: "GitHub 연결 성공!",
+        text: "GitHub 레포지토리가 성공적으로 연결되었습니다.",
         confirmButtonColor: "#dc2626",
         confirmButtonText: "확인",
       });
-      return;
+    } catch (error) {
+      githubError = error instanceof Error ? error.message : 'GitHub 연결에 실패했습니다.';
+      console.error('GitHub connection error:', error);
+      Swal.fire({
+        icon: "error",
+        title: "GitHub 연결 실패",
+        text: error instanceof Error ? error.message : 'GitHub 연결에 실패했습니다.',
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
+    } finally {
+      githubConnecting = false;
     }
-    // 더미: 연결 완료 상태로 설정
-    awsConnecting = true;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    config = {
-      ...config,
-      aws: { connected: true, connectionId: "dummy-aws-id" },
-      readyToDeploy: config.github.connected,
-    };
-    awsConnecting = false;
-    awsModalOpen = false;
-    Swal.fire("AWS 연결 성공!", "", "success");
   }
 
-  // 더미 이벤트 생성 함수
-  function createDummySSEEvents() {
-    const dummyDeploymentId = `dummy-${Date.now()}`;
-    const timestamp = Math.floor(Date.now() / 1000);
+  async function handleAWSConnect() {
+    if (!awsAccessKey || !awsSecretKey || !awsRegion) {
+      awsError = '모든 필드를 입력해주세요.';
+      return;
+    }
 
-    // 배포 상태 설정
-    currentDeployment.set({
-      deploymentId: dummyDeploymentId,
-      isActive: true,
-    });
+    awsConnecting = true;
+    awsError = '';
 
-    // 배포 시작 시 모달 열기
-    launchModalOpen = true;
+    try {
+      const response = await connectAWS({
+        region: awsRegion,
+        accessKeyId: awsAccessKey,
+        secretAccessKey: awsSecretKey
+      });
 
-    // 초기 상태 설정
-    deploymentEvents.set({
-      events: [],
-      currentStage: "idle",
-      isConnected: true,
-      isComplete: false,
-      hasError: false,
-    });
+      // 연결 성공 후 서버에서 최신 연결 정보 조회
+      await fetchConnections();
 
-    // 더미 이벤트 순차 발생 (실제 SSE 스펙에 맞게)
-    const dummyEvents = [
-      // Stage 1: Dockerfile 탐색 및 Docker Build
-      {
-        type: "stage",
-        message:
-          "[Stage 1] Dockerfile 탐색 및 Docker Build - Repository 클론 중...",
-        stage: 1,
-        delay: 1000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 1] Repository 클론 완료",
-        stage: 1,
-        details: { path: `/tmp/deployment_${timestamp}` },
-        delay: 2000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 1] Dockerfile 찾음",
-        stage: 1,
-        details: { path: `/tmp/deployment_${timestamp}/Dockerfile` },
-        delay: 3000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 1] Docker 이미지 빌드 완료",
-        stage: 1,
-        details: { imageName: `your-org-your-repo-main-${timestamp}` },
-        delay: 5000,
-      },
-
-      // Stage 2: ECR Push
-      {
-        type: "stage",
-        message: "[Stage 2] ECR에 이미지 Push 중 - ECR로 이미지 Push 중...",
-        stage: 2,
-        delay: 6000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 2] ECR 리포지토리 확인 완료",
-        stage: 2,
-        details: { repository: "your-org-your-repo" },
-        delay: 7000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 2] ECR 로그인 완료",
-        stage: 2,
-        delay: 8000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 2] 이미지 Push 완료",
-        stage: 2,
-        details: {
-          uri: `123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/your-org-your-repo:your-org-your-repo-main-${timestamp}`,
-        },
-        delay: 10000,
-      },
-
-      // Stage 3: ECS 배포
-      {
-        type: "stage",
-        message: "[Stage 3] ECS 배포 시작",
-        stage: 3,
-        details: {
-          image: `123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/your-org-your-repo:...`,
-        },
-        delay: 11000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 3] ECS 서비스 생성 완료",
-        stage: 3,
-        details: { serviceName: "panda-service", clusterName: "panda-cluster" },
-        delay: 13000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 3] ECS 서비스 업데이트 완료",
-        stage: 3,
-        details: { serviceName: "panda-service" },
-        delay: 15000,
-      },
-
-      // Stage 4: Blue/Green 배포
-      {
-        type: "stage",
-        message: "[Stage 4] CodeDeploy Blue/Green 배포 시작",
-        stage: 4,
-        details: { image: "..." },
-        delay: 16000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 4] Blue 서비스 실행 중",
-        stage: 4,
-        details: { url: "http://blue.example.com" },
-        delay: 17000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 4] Green 서비스 시작 중",
-        stage: 4,
-        details: { url: "http://green.example.com" },
-        delay: 18000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 4] Green 서비스 준비 완료",
-        stage: 4,
-        details: { url: "http://green.example.com" },
-        delay: 19000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 4] CodeDeploy Lifecycle Hook: BeforeAllowTraffic",
-        stage: 4,
-        delay: 20000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 4] CodeDeploy Lifecycle Hook: AfterAllowTraffic",
-        stage: 4,
-        delay: 21000,
-      },
-
-      // Stage 5: HealthCheck & 트래픽 전환
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 및 트래픽 전환",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 22000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 진행 중 - Check 1/5",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 23000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 진행 중 - Check 2/5",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 24000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 진행 중 - Check 3/5",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 25000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 진행 중 - Check 4/5",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 26000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] Green 서비스 HealthCheck 진행 중 - Check 5/5",
-        stage: 5,
-        details: { url: "http://green.example.com" },
-        delay: 27000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] HealthCheck 성공",
-        stage: 5,
-        details: { url: "http://green.example.com", passedChecks: 5 },
-        delay: 28000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] 트래픽 전환 중",
-        stage: 5,
-        details: { from: "blue", to: "green" },
-        delay: 29000,
-      },
-      {
-        type: "stage",
-        message: "[Stage 5] 트래픽 전환 완료",
-        stage: 5,
-        details: { activeService: "green" },
-        delay: 30000,
-      },
-
-      // Stage 6: 배포 완료
-      {
-        type: "stage",
-        message: "[Stage 6] 배포 완료",
-        stage: 6,
-        details: {
-          finalService: "green",
-          blueUrl: "http://blue.example.com",
-          greenUrl: "http://green.example.com",
-        },
-        delay: 31000,
-      },
-    ];
-
-    dummyEvents.forEach((event) => {
-      setTimeout(() => {
-        const eventWithTimestamp: DeploymentEvent = {
-          type: "stage" as DeploymentEventType,
-          message: event.message,
-          timestamp: new Date().toISOString(),
-          details: {
-            stage: event.stage,
-            ...(event.details || {}),
-          },
-        };
-
-        deploymentEvents.update((state) => {
-          const newEvents = [...state.events, eventWithTimestamp];
-          const isComplete = event.stage === 6;
-          const hasError = false;
-
-          // 현재 단계 추출
-          let currentStage = state.currentStage;
-          if (event.stage === 1) currentStage = "Docker Build";
-          else if (event.stage === 2) currentStage = "ECR Push";
-          else if (event.stage === 3) currentStage = "ECS Deployment";
-          else if (event.stage === 4) currentStage = "Blue/Green";
-          else if (event.stage === 5)
-            currentStage = "HealthCheck & 트래픽 전환";
-          else if (event.stage === 6) currentStage = "Completed";
-
-          return {
-            ...state,
-            events: newEvents,
-            currentStage,
-            isComplete,
-            hasError,
-          };
-        });
-
-        // 완료 시 결과 설정
-        if (event.stage === 6) {
-          setTimeout(() => {
-            result = {
-              status: "completed",
-              message: "배포가 성공적으로 완료되었습니다!",
-              details: {
-                deploymentId: dummyDeploymentId,
-                completedAt: new Date().toISOString(),
-                finalService: "green",
-                blueUrl: "http://blue.example.com",
-                greenUrl: "http://green.example.com",
-              },
-            };
-          }, 1000);
-        }
-      }, event.delay);
-    });
+      awsModalOpen = false;
+      Swal.fire({
+        icon: "success",
+        title: "AWS 연결 성공!",
+        text: "AWS 계정이 성공적으로 연결되었습니다.",
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
+    } catch (error) {
+      awsError = error instanceof Error ? error.message : 'AWS 연결에 실패했습니다.';
+      console.error('AWS connection error:', error);
+      Swal.fire({
+        icon: "error",
+        title: "AWS 연결 실패",
+        text: error instanceof Error ? error.message : 'AWS 연결에 실패했습니다.',
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
+    } finally {
+      awsConnecting = false;
+    }
   }
 
   async function handleDeploy() {
-    console.log("=== handleDeploy START ===", {
-      githubConnected: config.github.connected,
-      awsConnected: config.aws.connected,
-      isActive: currentDeploymentState.isActive,
-      countdown,
-    });
+    // 이미 배포가 진행 중이면 중단
+    if (currentDeploymentState.isActive) {
+      Swal.fire({
+        icon: 'info',
+        title: '배포 진행 중',
+        text: '이미 배포가 진행 중입니다.',
+        confirmButtonColor: '#dc2626',
+        confirmButtonText: '확인'
+      });
+      return;
+    }
 
-    // 더미 모드: 모든 조건 체크 완전히 우회
-    // if (!config.github.connected || !config.aws.connected) {
-    // 	Swal.fire({
-    // 		icon: 'warning',
-    // 		title: '발사 준비 미완료',
-    // 		text: 'GitHub와 AWS 연결을 먼저 완료해주세요.',
-    // 		confirmButtonColor: '#dc2626',
-    // 		confirmButtonText: '확인'
-    // 	});
-    // 	return;
-    // }
-
-    // if (currentDeploymentState.isActive) {
-    // 	Swal.fire({
-    // 		icon: 'info',
-    // 		title: '배포 진행 중',
-    // 		text: '이미 배포가 진행 중입니다.',
-    // 		confirmButtonColor: '#dc2626',
-    // 		confirmButtonText: '확인'
-    // 	});
-    // 	return;
-    // }
-
-    // 더미 모드: 카운트다운 체크도 완전히 우회
-    // if (countdown !== null) {
-    // 	console.log('Countdown in progress, skipping...');
-    // 	return;
-    // }
-
-    console.log("Starting countdown...");
+    // 카운트다운이 이미 진행 중이면 중단
+    if (countdown !== null) {
+      return;
+    }
 
     // 효과음 로드 및 재생
     const countdownSound = new Audio("/CountDown.mp3");
@@ -624,71 +351,86 @@
 
     // 카운트다운 시작 (5부터 시작)
     countdown = 5;
-    console.log("Countdown set to:", countdown);
 
     try {
       await countdownSound.play();
-      console.log("Countdown sound playing");
     } catch (e) {
       console.error("Failed to play countdown sound:", e);
     }
 
+    // 카운트다운 중에 필요한 정보 확인 및 가져오기
+    let githubConfig = config.github;
+    let awsConfig = config.aws;
+
+    // 필요한 정보가 없으면 /api/v1/connect에서 가져오기
+    if (!githubConfig.connected || !awsConfig.connected ||
+        !githubConfig.connectionId || !awsConfig.connectionId ||
+        !githubConfig.owner || !githubConfig.repo) {
+      await fetchConnections();
+
+      // 다시 확인
+      githubConfig = config.github;
+      awsConfig = config.aws;
+    }
+
+    // 카운트다운 진행
     for (let i = 5; i > 0; i--) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (i > 1) {
         countdown = i - 1;
-        console.log("Countdown:", countdown);
       } else {
         countdown = null;
-        console.log("Countdown finished");
       }
+    }
+
+    // 카운트다운이 끝난 후 배포 요청
+    // 필요한 정보가 여전히 없으면 에러
+    if (!githubConfig.connected || !awsConfig.connected ||
+        !githubConfig.connectionId || !awsConfig.connectionId ||
+        !githubConfig.owner || !githubConfig.repo) {
+      Swal.fire({
+        icon: 'warning',
+        title: '발사 준비 미완료',
+        text: 'GitHub와 AWS 연결을 먼저 완료해주세요.',
+        confirmButtonColor: '#dc2626',
+        confirmButtonText: '확인'
+      });
+      return;
     }
 
     deployConnecting = true;
     deployError = "";
-    result = null; // 이전 결과 초기화
+    result = null;
 
-    // 더미 모드: 실제 API 호출 대신 더미 이벤트 생성
     try {
-      // 실제 API 호출 시도 (실패해도 무시)
-      try {
-        const githubConfig = config.github as {
-          connected: boolean;
-          connectionId?: string;
-          owner?: string;
-          repo?: string;
-          branch?: string;
-        };
-        const awsConfig = config.aws as {
-          connected: boolean;
-          connectionId?: string;
-          region?: string;
-        };
+      const response = await startDeployment({
+        githubConnectionId: githubConfig.connectionId,
+        awsConnectionId: awsConfig.connectionId,
+        owner: githubConfig.owner,
+        repo: githubConfig.repo,
+        branch: githubConfig.branch || "main",
+      });
 
-        const response = await startDeployment({
-          githubConnectionId: githubConfig.connectionId!,
-          awsConnectionId: awsConfig.connectionId!,
-          owner: githubConfig.owner!,
-          repo: githubConfig.repo!,
-          branch: githubConfig.branch || "main",
-        });
+      // deploymentId를 localStorage에 저장 (polling을 위해 유지)
+      localStorage.setItem("deploymentId", response.deploymentId);
 
-        currentDeployment.set({
-          deploymentId: response.deploymentId,
-          isActive: true,
-        });
+      // store 업데이트 (SSE 연결은 store 구독에서 자동으로 처리됨)
+      currentDeployment.set({
+        deploymentId: response.deploymentId,
+        isActive: true,
+      });
 
-        launchModalOpen = true;
-        eventSource = createSSEConnection(response.deploymentId);
-      } catch (error) {
-        // API 호출 실패 시 더미 모드로 전환
-        console.log("API 호출 실패, 더미 모드로 전환:", error);
-        createDummySSEEvents();
-      }
+      launchModalOpen = true;
     } catch (error) {
-      deployError =
-        error instanceof Error ? error.message : "배포 시작에 실패했습니다.";
+      deployError = error instanceof Error ? error.message : "배포 시작에 실패했습니다.";
       console.error("Deployment start error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "배포 시작 실패",
+        text: error instanceof Error ? error.message : "배포 시작에 실패했습니다.",
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
     } finally {
       deployConnecting = false;
     }
@@ -698,6 +440,9 @@
 <div class="min-h-screen relative">
   <!-- 우주 배경 -->
   <SpaceBackground />
+
+  <!-- 배포 결과 우주선 애니메이션 -->
+  <DeploymentSpaceships {result} />
 
   <!-- 기존 발사 버튼은 LaunchModal 안으로 이동 (주석처리) -->
 
@@ -757,9 +502,10 @@
     {#if config.readyToDeploy}
       <div class="mt-6 flex justify-center">
         <button
-          onclick={() => {
-            // 배포 상태를 초기화하여 ControlPanel이 보이도록
-            currentDeployment.set({ deploymentId: null, isActive: false });
+          onclick={async () => {
+            // localStorage에서 배포 상태 확인
+            // 끝나있으면 끊고 localStorage에서도 제거, 진행중이면 진행중인 상태부터 시작
+            await restoreDeploymentFromStorage();
             launchModalOpen = true;
           }}
           class="flex justify-center items-center gap-2 px-8 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-lg font-bold text-lg transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
@@ -860,9 +606,10 @@
     {/if}
     <button
       onclick={handleGitHubConnect}
-      class="w-full bg-[#5A4FCF] text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
+      disabled={githubConnecting}
+      class="w-full bg-[#5A4FCF] text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      등록
+      {githubConnecting ? '연결 중...' : '등록'}
     </button>
   </div>
 </Modal>
@@ -920,9 +667,10 @@
     {/if}
     <button
       onclick={handleAWSConnect}
-      class="w-full bg-[#5A4FCF] text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors"
+      disabled={awsConnecting}
+      class="w-full bg-[#5A4FCF] text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      등록
+      {awsConnecting ? '연결 중...' : '등록'}
     </button>
   </div>
 </Modal>
@@ -953,7 +701,7 @@
       deploymentId={currentDeploymentState.deploymentId || ""}
       {result}
       onReset={() => {
-        // 배포 상태 초기화
+        // 배포 상태 초기화 및 localStorage에서 제거
         currentDeployment.set({ deploymentId: null, isActive: false });
         deploymentEvents.set({
           events: [],
@@ -968,7 +716,7 @@
           closeSSEConnection(eventSource);
           eventSource = null;
         }
-        localStorage.removeItem("currentDeployment");
+        // localStorage는 유지 (polling을 위해)
       }}
     />
   {/if}
