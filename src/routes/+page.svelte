@@ -5,6 +5,8 @@
     deploymentEvents,
     createSSEConnection,
     closeSSEConnection,
+    type DeploymentEvent,
+    type DeploymentEventType,
   } from "$lib/stores/sse";
   import {
     connectGitHub,
@@ -73,6 +75,7 @@
 
 	let buttonPressed = $state(false);
 	let pollingInterval: ReturnType<typeof setInterval> | null = null;
+	let rocketSound: HTMLAudioElement | null = null;
 
   // Store 구독 및 초기화
   onMount(() => {
@@ -101,6 +104,13 @@
 
     const unsubscribeEvents = deploymentEvents.subscribe((value) => {
       events = value;
+
+      // 배포가 완료되거나 실패하면 로켓 발사 소리 중지
+      if ((value.isComplete || value.hasError) && rocketSound) {
+        rocketSound.pause();
+        rocketSound.currentTime = 0;
+        rocketSound = null;
+      }
     });
 
     // 배포 결과 polling (5초마다)
@@ -113,20 +123,26 @@
       const poll = async () => {
         try {
           const deploymentResult = await getDeploymentResult(deploymentId);
+
           result = deploymentResult;
 
-          // 배포가 완료되거나 실패한 경우 SSE 연결만 종료, polling은 계속
+          // 배포가 완료되거나 실패한 경우 SSE 연결만 종료
+          // isActive는 변경하지 않음 - SSE나 사용자 액션에서만 변경
           if (deploymentResult.status === "completed" || deploymentResult.status === "failed") {
+            // 로켓 발사 소리 중지
+            if (rocketSound) {
+              rocketSound.pause();
+              rocketSound.currentTime = 0;
+              rocketSound = null;
+            }
+
             // SSE 연결 종료
             if (eventSource) {
               closeSSEConnection(eventSource);
               eventSource = null;
             }
-            // isActive는 false로 설정
-            currentDeployment.set({
-              deploymentId: deploymentId,
-              isActive: false
-            });
+            // polling은 계속하되 isActive는 그대로 유지
+            // (SSE에서 이미 isActive를 false로 설정했거나, 사용자가 리셋할 때까지 유지)
           }
         } catch (error) {
           console.error("Failed to poll deployment result:", error);
@@ -139,12 +155,6 @@
       pollingInterval = setInterval(poll, 5000);
     };
 
-    // localStorage에서 deploymentId가 있으면 polling 시작
-    const savedDeploymentId = localStorage.getItem("deploymentId");
-    if (savedDeploymentId) {
-      startPolling(savedDeploymentId);
-    }
-
     // 초기 상태 조회: 연결 정보 및 localStorage에서 배포 상태 복원
     fetchConnections();
     restoreDeploymentFromStorage();
@@ -156,12 +166,20 @@
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
+      if (rocketSound) {
+        rocketSound.pause();
+        rocketSound = null;
+      }
     };
   });
 
 	onDestroy(() => {
 		if (eventSource) {
 			closeSSEConnection(eventSource);
+		}
+		if (rocketSound) {
+			rocketSound.pause();
+			rocketSound = null;
 		}
 	});
 
@@ -214,8 +232,8 @@
     }
 
     try {
-      // 배포 상태 확인
       const deploymentResult = await getDeploymentResult(savedDeploymentId);
+
       result = deploymentResult;
 
       if (deploymentResult.status === "completed" || deploymentResult.status === "failed") {
@@ -236,6 +254,22 @@
           isActive: true,
         });
         // SSE 연결은 store 구독에서 자동으로 처리됨
+
+        // 진행 중인 배포가 있으면 로켓 발사 소리 재생
+        try {
+          if (rocketSound) {
+            rocketSound.pause();
+            rocketSound = null;
+          }
+          rocketSound = new Audio("/rocket.mp4");
+          rocketSound.loop = true;
+          rocketSound.volume = 0.5;
+          rocketSound.play().catch((e) => {
+            console.error("Failed to play rocket sound:", e);
+          });
+        } catch (e) {
+          console.error("Failed to load rocket sound:", e);
+        }
       }
     } catch (error) {
       console.error("Failed to restore deployment from storage:", error);
@@ -419,6 +453,22 @@
         deploymentId: response.deploymentId,
         isActive: true,
       });
+
+      // 로켓 발사 소리 재생
+      try {
+        if (rocketSound) {
+          rocketSound.pause();
+          rocketSound = null;
+        }
+        rocketSound = new Audio("/rocket.mp4");
+        rocketSound.loop = true;
+        rocketSound.volume = 0.5;
+        rocketSound.play().catch((e) => {
+          console.error("Failed to play rocket sound:", e);
+        });
+      } catch (e) {
+        console.error("Failed to load rocket sound:", e);
+      }
 
       launchModalOpen = true;
     } catch (error) {
@@ -701,6 +751,13 @@
       deploymentId={currentDeploymentState.deploymentId || ""}
       {result}
       onReset={() => {
+        // 로켓 발사 소리 중지
+        if (rocketSound) {
+          rocketSound.pause();
+          rocketSound.currentTime = 0;
+          rocketSound = null;
+        }
+
         // 배포 상태 초기화 및 localStorage에서 제거
         currentDeployment.set({ deploymentId: null, isActive: false });
         deploymentEvents.set({

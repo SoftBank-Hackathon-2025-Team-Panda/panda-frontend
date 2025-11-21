@@ -1,5 +1,6 @@
 // API 클라이언트 - 새로운 API 스펙에 맞게 업데이트
-const API_BASE_URL = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:3000/api/v1';
+import { env } from '$env/dynamic/public';
+const API_BASE_URL = env.PUBLIC_API_BASE_URL || 'http://localhost:3000/api/v1';
 
 export interface GitHubConnectRequest {
 	owner: string;

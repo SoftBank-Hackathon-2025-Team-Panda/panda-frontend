@@ -8,6 +8,8 @@
 		details?: Record<string, unknown>;
 	}
 
+	import type { DeploymentResultData } from "$lib/api/client";
+
 	interface Props {
 		currentStage: string;
 		hasError: boolean;
@@ -15,11 +17,7 @@
 		isComplete: boolean;
 		events: DeploymentEvent[];
 		deploymentId: string;
-		result?: {
-			status: string;
-			message?: string;
-			details?: Record<string, unknown>;
-		} | null;
+		result?: DeploymentResultData | null;
 		onReset?: () => void;
 	}
 
@@ -130,27 +128,125 @@
 				</div>
 			</div>
 		</div>
-	{:else}
-		<!-- 배포 완료/실패: 전체 정보 표시 -->
+	{:else if hasError}
+		<!-- 배포 실패: 실패 전용 화면 -->
 		<div class="relative z-10 w-full h-full max-w-6xl px-4 py-4 flex flex-col overflow-hidden">
-			{#if (isComplete || hasError)}
+			<!-- 상단 버튼 -->
 			<div class="absolute top-4 right-4 flex flex-wrap gap-3 z-20">
+				<button
+					onclick={() => (showDetailedLogs = !showDetailedLogs)}
+					class="px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl"
+				>
+					{showDetailedLogs ? '상세 로그 숨기기' : '상세 로그 보기'}
+				</button>
+				{#if onReset}
 					<button
-						onclick={() => (showDetailedLogs = !showDetailedLogs)}
-						class="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl"
+						onclick={onReset}
+						class="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl whitespace-nowrap"
 					>
-						{showDetailedLogs ? '상세 로그 숨기기' : '상세 로그 보기'}
+						메인 화면으로
 					</button>
-					{#if onReset}
-						<button
-							onclick={onReset}
-							class="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl whitespace-nowrap"
-						>
-							메인 화면으로
-						</button>
+				{/if}
+			</div>
+
+			<!-- 실패 메시지 중앙 표시 (상세 로그가 꺼져있을 때만) -->
+			{#if !showDetailedLogs}
+				<div class="flex-1 flex flex-col items-center justify-center space-y-6 pt-12">
+					<!-- 실패 아이콘 -->
+					<div class="relative">
+						<div class="absolute inset-0 bg-red-500/20 rounded-full blur-2xl animate-pulse"></div>
+						<div class="relative w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center border-4 border-red-500/50">
+							<svg class="w-16 h-16 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</div>
+					</div>
+
+					<!-- 실패 제목 -->
+					<div class="text-center space-y-2">
+						<h2 class="text-4xl font-bold text-red-400">배포 실패</h2>
+					</div>
+
+					<!-- 에러 메시지 카드 -->
+					{#if result?.errorMessage}
+						<div class="w-full max-w-2xl bg-red-950/30 backdrop-blur-md rounded-lg p-6 border border-red-500/30">
+							<div class="flex items-start space-x-3">
+								<svg class="w-6 h-6 text-red-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								<div class="flex-1">
+									<h3 class="text-lg font-semibold text-red-400 mb-2">에러 메시지</h3>
+									<p class="text-gray-300 whitespace-pre-wrap break-words">{result.errorMessage}</p>
+								</div>
+							</div>
+						</div>
 					{/if}
 				</div>
 			{/if}
+
+			<!-- 하단: 상세 로그 -->
+			{#if showDetailedLogs}
+				<div class="flex-1 flex flex-col overflow-hidden pt-12">
+					<div class="bg-black/50 backdrop-blur-md rounded-lg p-6 border border-white/20 flex flex-col flex-1 min-h-0 overflow-hidden">
+						<h3 class="text-lg font-semibold text-white mb-4">배포 로그</h3>
+						<div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
+							{#if events.length === 0}
+								<div class="text-gray-500 text-center py-8">
+									<p>이벤트가 없습니다.</p>
+								</div>
+							{:else}
+								{#each events as event (event.timestamp)}
+									<div
+										class="flex items-start space-x-3 p-3 bg-black/30 rounded-lg border {event.type === 'error' ? 'border-red-500/30' : 'border-white/5'} hover:border-white/20 transition-all"
+									>
+										<span class="text-2xl flex-shrink-0">{getEventIcon(event.type)}</span>
+										<div class="flex-1 min-w-0">
+											<div class="flex items-center space-x-2 mb-1">
+												<span class="font-semibold {event.type === 'error' ? 'text-red-400' : 'text-white'}">{event.type}</span>
+												<span class="text-xs text-gray-500">
+													{event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : ''}
+												</span>
+											</div>
+											<p class="text-gray-300 break-words">{event.message}</p>
+											{#if event.details && Object.keys(event.details).length > 0}
+												<details class="mt-2">
+													<summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-400">
+														상세 정보
+													</summary>
+													<pre class="mt-2 text-xs bg-black/50 p-2 rounded overflow-x-auto text-gray-400 border border-white/10">
+{JSON.stringify(event.details, null, 2)}</pre
+													>
+												</details>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+				</div>
+			{/if}
+		</div>
+	{:else}
+		<!-- 배포 완료: 전체 정보 표시 -->
+		<div class="relative z-10 w-full h-full max-w-6xl px-4 py-4 flex flex-col overflow-hidden">
+			<!-- 상단 버튼 -->
+			<div class="absolute top-4 right-4 flex flex-wrap gap-3 z-20">
+				<button
+					onclick={() => (showDetailedLogs = !showDetailedLogs)}
+					class="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl"
+				>
+					{showDetailedLogs ? '상세 로그 숨기기' : '상세 로그 보기'}
+				</button>
+				{#if onReset}
+					<button
+						onclick={onReset}
+						class="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl whitespace-nowrap"
+					>
+						메인 화면으로
+					</button>
+				{/if}
+			</div>
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden pt-12 lg:pt-10">
 				<!-- 좌측: 현재 단계 및 상태 -->
 			<div class="lg:col-span-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
@@ -159,25 +255,18 @@
 						<h2 class="text-xl font-semibold mb-4 text-white">배포 결과</h2>
 						<div class="space-y-4">
 							<div>
-								<p class="text-2xl font-bold {hasError ? 'text-red-400' : 'text-green-400'} mb-2">{currentStage}</p>
+								<p class="text-2xl font-bold text-green-400 mb-2">{currentStage}</p>
 								<div class="h-2 bg-gray-700 rounded-full overflow-hidden">
 									<div
-										class="h-full {hasError ? 'bg-red-500' : 'bg-green-500'} transition-all duration-500"
+										class="h-full bg-green-500 transition-all duration-500"
 										style="width: 100%"
 									></div>
 								</div>
 							</div>
 							<div class="flex flex-wrap gap-2">
-								{#if isComplete}
-									<span class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm border border-green-500/30">
-										완료
-									</span>
-								{/if}
-								{#if hasError}
-									<span class="px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-sm border border-red-500/30">
-										오류
-									</span>
-								{/if}
+								<span class="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm border border-green-500/30">
+									완료
+								</span>
 							</div>
 						</div>
 					</div>
@@ -199,15 +288,15 @@
 								</div>
 								<div>
 									<span class="font-semibold text-gray-300">메시지:</span>
-									<p class="mt-1 text-gray-400">{result.message}</p>
+									<p class="mt-1 text-gray-400">{result.errorMessage || '배포가 실패했습니다.'}</p>
 								</div>
-								{#if result.details}
+								{#if result.errorMessage}
 									<details class="mt-4">
 										<summary class="text-sm text-gray-400 cursor-pointer hover:text-gray-300">
 											상세 정보
 										</summary>
 										<pre class="mt-2 text-xs bg-black/50 p-3 rounded overflow-x-auto text-gray-300 border border-white/10">
-{JSON.stringify(result.details, null, 2)}</pre
+{result.errorMessage}</pre
 										>
 									</details>
 								{/if}

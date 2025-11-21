@@ -5,8 +5,10 @@ set -e
 
 echo "Frontend EC2 배포 시작..."
 
-# EC2 퍼블릭 IP 설정 (고정값)
+# EC2 퍼블릭 IP 설정 (실제 서버 IP로 변경하세요)
 EC2_IP=3.34.216.85
+# 백엔드 API 포트 (별도 컨테이너로 실행 중)
+BACKEND_PORT=8080
 
 echo "EC2 IP: ${EC2_IP}"
 
@@ -19,7 +21,6 @@ tar -czf frontend-deploy.tar.gz \
     --exclude='build' \
     --exclude='.git' \
     --exclude='*.log' \
-    --exclude='.env' \
     --exclude='.deploy.env' \
     --exclude='deploy-to-ec2.sh' \
     --exclude='deploy.sh' \
@@ -31,12 +32,19 @@ echo "압축 완료: frontend-deploy.tar.gz"
 echo ""
 echo "다음 명령어로 EC2에 업로드하세요:"
 echo ""
+echo "  # Amazon Linux인 경우 (ec2-user):"
 echo "  scp -i ~/Downloads/keypair-panda.pem frontend-deploy.tar.gz ec2-user@${EC2_IP}:~/"
+echo ""
+echo "  # Ubuntu인 경우 (ubuntu):"
+echo "  scp -i ~/Downloads/keypair-panda.pem frontend-deploy.tar.gz ubuntu@${EC2_IP}:~/"
+echo ""
+echo "  # 연결 테스트 (verbose 모드로 사용자 이름 확인):"
+echo "  ssh -v -i ~/Downloads/keypair-panda.pem ec2-user@${EC2_IP}"
+echo "  ssh -v -i ~/Downloads/keypair-panda.pem ubuntu@${EC2_IP}"
 echo ""
 echo "EC2에서 실행할 명령어:"
 echo ""
 cat <<EOF
-  ssh -i ~/Downloads/keypair-panda.pem ec2-user@${EC2_IP}
   mkdir -p ~/frontend
   cd ~/frontend
   tar -xzf ~/frontend-deploy.tar.gz
@@ -47,10 +55,16 @@ cat <<EOF
   fi
 
   # 기존 컨테이너 중지 및 제거
-  docker-compose down 2>/dev/null || true
+  docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+
+  # .env 파일을 읽어서 환경 변수로 export 후 빌드
+  # docker-compose는 자동으로 .env를 읽지만, build.args에 명시적으로 전달하기 위해 export
+  set -a
+  source .env
+  set +a
 
   # Docker Compose로 빌드 및 실행
-  docker-compose up -d --build
+  docker compose up -d --build 2>/dev/null || docker-compose up -d --build
 EOF
 echo ""
 echo "배포 후 접속 URL:"

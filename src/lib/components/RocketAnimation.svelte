@@ -410,12 +410,33 @@
 	<!-- 에러 배경 (폭발) -->
 	{#if hasError}
 		<div class="absolute inset-0 bg-gradient-to-b from-red-900 via-orange-900 to-black">
-			<!-- 폭발 파티클 -->
-			{#each Array(20) as _, i}
-				<div
-					class="absolute w-2 h-2 bg-yellow-400 rounded-full animate-explode"
-					style="left: 50%; top: 50%; animation-delay: {i * 0.1}s; --angle: {i * 18}deg;"
-				></div>
+
+
+			<!-- starburst.png를 주변에 여러 개 배치 (중앙에서 퍼지는 효과) -->
+			{#each Array(5) as _, i}
+				{@const angles = [25, 110, 200, 290, 160]}
+				{@const angle = angles[i] * Math.PI / 180}
+				{@const distances = [200, 280, 240, 300, 220]}
+				{@const distance = distances[i]}
+				{@const rotations = [20, 75, 130, 185, 240]}
+				{@const rotation = rotations[i]}
+				{@const sizes = [160, 220, 180, 240, 200]}
+				{@const size = sizes[i]}
+				{@const leftPos = 50 + Math.cos(angle) * (distance / 10)}
+				{@const topPos = 50 + Math.sin(angle) * (distance / 10)}
+				<img
+					src="/starburst.png"
+					alt="Explosion"
+					class="absolute starburst-explosion"
+					style="
+						left: {leftPos}%;
+						top: {topPos}%;
+						width: {size}px;
+						height: auto;
+						animation-delay: {i * 0.1}s;
+						--rotation: {rotation}deg;
+					"
+				/>
 			{/each}
 		</div>
 	{/if}
@@ -428,9 +449,7 @@
 		{#if hasError}
 			<!-- 폭발 애니메이션 -->
 			<div class="relative">
-				<div class="absolute inset-0 w-24 h-24 bg-red-500 rounded-full animate-ping opacity-75"></div>
-				<div class="absolute inset-0 w-20 h-20 bg-orange-500 rounded-full animate-ping opacity-75" style="animation-delay: 0.15s;"></div>
-				<div class="absolute inset-0 w-16 h-16 bg-yellow-500 rounded-full animate-ping opacity-75" style="animation-delay: 0.3s;"></div>
+
 				<!-- 우주선 (폭발 중) -->
 				<svg class="relative w-20 h-28" viewBox="0 0 24 32" fill="none">
 					<path
@@ -485,23 +504,33 @@
 		animation: twinkle 2s ease-in-out infinite;
 	}
 
-	@keyframes explode {
-		0% {
-			transform: translate(0, 0) scale(1);
-			opacity: 1;
-		}
-		100% {
-			transform: translate(
-					calc(cos(var(--angle)) * 100px),
-					calc(sin(var(--angle)) * 100px)
-				)
-				scale(0);
-			opacity: 0;
-		}
+
+	/* starburst 폭발 애니메이션 */
+	.starburst-explosion {
+		opacity: 0;
+		animation: starburst-pop 2s ease-out forwards;
+		pointer-events: none;
+		filter: drop-shadow(0 0 10px rgba(255, 165, 0, 0.8));
+		transform: translate(-50%, -50%);
 	}
 
-	.animate-explode {
-		animation: explode 1s ease-out forwards;
+	@keyframes starburst-pop {
+		0% {
+			opacity: 0;
+			transform: translate(-50%, -50%) scale(0) rotate(var(--rotation, 0deg));
+		}
+		20% {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1.3) rotate(var(--rotation, 0deg));
+		}
+		60% {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1) rotate(var(--rotation, 0deg));
+		}
+		100% {
+			opacity: 0;
+			transform: translate(-50%, -50%) scale(0.8) rotate(var(--rotation, 0deg));
+		}
 	}
 
 	.rocket-container {
