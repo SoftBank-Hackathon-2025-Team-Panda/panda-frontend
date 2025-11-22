@@ -34,20 +34,6 @@
 
 	let showDetailedLogs = $state(false);
 
-	function getEventIcon(type: string): string {
-		const icons: Record<string, string> = {
-			docker: '🐳',
-			ecr: '📦',
-			ecs: '☁️',
-			codedeploy: '🚀',
-			bluegreen: '🔄',
-			done: '✅',
-			error: '❌',
-			stage: '📋'
-		};
-		return icons[type] || '📋';
-	}
-
 	// 가장 최근의 stage 이벤트에서 message 가져오기
 	function getLatestStageMessage(): string {
 		// events 배열에서 type이 'stage'인 가장 최근 이벤트 찾기
@@ -208,7 +194,6 @@
 									<div
 										class="flex items-start space-x-3 p-3 bg-black/30 rounded-lg border {event.type === 'error' ? 'border-red-500/30' : 'border-white/5'} hover:border-white/20 transition-all"
 									>
-										<span class="text-2xl flex-shrink-0">{getEventIcon(event.type)}</span>
 										<div class="flex-1 min-w-0">
 											<div class="flex items-center space-x-2 mb-1">
 												<span class="font-semibold {event.type === 'error' ? 'text-red-400' : 'text-white'}">{event.type}</span>
@@ -256,7 +241,7 @@
 					</button>
 				{/if}
 			</div>
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden pt-12 lg:pt-10">
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 flex-1 overflow-hidden pt-12 lg:pt-10">
 				<!-- 좌측: 현재 단계 및 상태 -->
 			<div class="lg:col-span-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
 					<!-- 현재 단계 카드 -->
@@ -317,7 +302,7 @@
 
 				<!-- 우측: 이벤트 로그 (배포 완료 후에만 표시) -->
 			{#if showDetailedLogs}
-				<div class="lg:col-span-2 flex flex-col overflow-hidden">
+				<div class="lg:col-span-2 flex flex-col overflow-hidden lg:ml-4">
 					<div class="bg-black/50 backdrop-blur-md rounded-lg p-6 border border-white/20 flex flex-col flex-1 min-h-0 overflow-hidden">
 							<h2 class="text-xl font-semibold mb-4 text-white">배포 로그</h2>
 						<div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
@@ -330,7 +315,6 @@
 										<div
 											class="flex items-start space-x-3 p-4 bg-black/30 rounded-lg border border-white/5 hover:border-white/20 transition-all"
 										>
-											<span class="text-2xl flex-shrink-0">{getEventIcon(event.type)}</span>
 											<div class="flex-1 min-w-0">
 												<div class="flex items-center space-x-2 mb-1">
 													<span class="font-semibold text-white">{event.type}</span>

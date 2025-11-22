@@ -255,13 +255,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 
 	// 연결 오류 처리
 	eventSource.onerror = (error) => {
-		console.error('[SSE] Connection error:', error);
-		console.error('[SSE] ReadyState:', eventSource.readyState); // 0=CONNECTING, 1=OPEN, 2=CLOSED
-		console.error('[SSE] URL:', eventSource.url || url);
-
 		// 연결이 완전히 닫힌 상태 (더 이상 재연결 불가능)
 		if (eventSource.readyState === EventSource.CLOSED) {
 			console.error('[SSE] Connection closed by server or network error');
+			console.error('[SSE] URL:', eventSource.url || url);
 			if (errorTimeout) {
 				clearTimeout(errorTimeout);
 				errorTimeout = null;
@@ -277,7 +274,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 		// 재연결 시도 중이면 카운트 증가
 		if (eventSource.readyState === EventSource.CONNECTING) {
 			reconnectAttempts++;
-			console.warn(`[SSE] Reconnecting... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+			// 재연결 시도는 첫 번째와 마지막 시도만 로그 출력
+			if (reconnectAttempts === 1 || reconnectAttempts >= maxReconnectAttempts) {
+				console.warn(`[SSE] Reconnecting... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+			}
 
 			// 최대 재연결 시도 횟수 초과 시 실패 처리
 			if (reconnectAttempts >= maxReconnectAttempts) {

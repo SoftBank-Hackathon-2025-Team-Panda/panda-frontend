@@ -473,6 +473,22 @@
     // 3. 모달 열기 (즉시 화면 전환 보이도록)
     launchModalOpen = true;
 
+    // 4. 로켓 발사 소리 재생 (idle 화면 전환 시점부터 시작)
+    try {
+      if (rocketSound) {
+        rocketSound.pause();
+        rocketSound = null;
+      }
+      rocketSound = new Audio("/rocket.mp4");
+      rocketSound.loop = true;
+      rocketSound.volume = 0.5;
+      rocketSound.play().catch((e) => {
+        console.error("Failed to play rocket sound:", e);
+      });
+    } catch (e) {
+      console.error("Failed to load rocket sound:", e);
+    }
+
     try {
       // 4. 배포 API 호출
       const response = await startDeployment({
@@ -501,22 +517,6 @@
         deploymentId: response.deploymentId,
         isActive: true,
       });
-
-      // 로켓 발사 소리 재생
-      try {
-        if (rocketSound) {
-          rocketSound.pause();
-          rocketSound = null;
-        }
-        rocketSound = new Audio("/rocket.mp4");
-        rocketSound.loop = true;
-        rocketSound.volume = 0.5;
-        rocketSound.play().catch((e) => {
-          console.error("Failed to play rocket sound:", e);
-        });
-      } catch (e) {
-        console.error("Failed to load rocket sound:", e);
-      }
     } catch (error) {
       deployError = error instanceof Error ? error.message : "배포 시작에 실패했습니다.";
       console.error("Deployment start error:", error);
