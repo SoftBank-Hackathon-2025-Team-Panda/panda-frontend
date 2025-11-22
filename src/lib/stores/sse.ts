@@ -157,38 +157,6 @@ export function createSSEConnection(deploymentId: string): EventSource {
 		}
 	});
 
-	// error 이벤트 핸들러 (서버에서 보내는 커스텀 error 이벤트)
-	eventSource.addEventListener('error', (event: MessageEvent) => {
-		try {
-			// event.data가 없거나 빈 문자열이면 스킵
-			if (!event.data || event.data.trim() === '') {
-				console.warn('[SSE] Received empty error event data');
-				return;
-			}
-
-			const data: DeploymentEvent = JSON.parse(event.data);
-			console.log('[SSE] Error event received:', data);
-			const eventWithTimestamp: DeploymentEvent = {
-				...data,
-				timestamp: data.timestamp || new Date().toISOString()
-			};
-
-			deploymentEvents.update((state) => {
-				const newEvents = [...state.events, eventWithTimestamp];
-				return {
-					...state,
-					events: newEvents,
-					currentStage: 'Failed',
-					isComplete: true,
-					hasError: true
-				};
-			});
-		} catch (error) {
-			console.error('Failed to parse SSE error event:', error);
-			console.error('Event data:', event.data);
-		}
-	});
-
 	// success 이벤트 핸들러 (Blue/Green 배포 완료)
 	eventSource.addEventListener('success', (event: MessageEvent) => {
 		try {
@@ -209,6 +177,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 					hasError: false
 				};
 			});
+
+			// 배포 완료 후 SSE 연결 종료
+			console.log('[SSE] Closing connection after success event');
+			eventSource.close();
 		} catch (error) {
 			console.error('Failed to parse SSE success event:', error);
 		}
@@ -234,6 +206,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 					hasError: true
 				};
 			});
+
+			// 배포 실패 후 SSE 연결 종료
+			console.log('[SSE] Closing connection after fail event');
+			eventSource.close();
 		} catch (error) {
 			console.error('Failed to parse SSE fail event:', error);
 		}
