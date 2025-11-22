@@ -4,72 +4,30 @@
 	// 배경 단계별 opacity 계산 (자연스러운 전환)
 	let groundOpacity = $derived.by(() => {
 		if (hasError) return 0;
-		if (stage === 'idle') return 1;
-		if (stage === 'Docker Build') return 0.7;
-		if (stage === 'ECR Push') return 0.4;
-		if (stage === 'ECS Deployment') return 0.2;
+		if (stage === 'idle' || stage === 'Docker Build') return 1;
 		return 0;
 	});
 
-	let troposphereOpacity = $derived.by(() => {
-		if (hasError) return 0;
-		if (stage === 'Docker Build') return 1;
-		if (stage === 'ECR Push') return 0.8;
-		if (stage === 'ECS Deployment') return 0.5;
-		if (stage === 'Blue/Green') return 0.2;
-		return 0;
-	});
-
-	let stratosphereOpacity = $derived.by(() => {
+	let atmosphereOpacity = $derived.by(() => {
 		if (hasError) return 0;
 		if (stage === 'ECR Push') return 1;
-		if (stage === 'ECS Deployment') return 0.7;
-		if (stage === 'Blue/Green') return 0.3;
 		return 0;
 	});
 
-	let mesosphereOpacity = $derived.by(() => {
+	let midOrbitOpacity = $derived.by(() => {
 		if (hasError) return 0;
 		if (stage === 'ECS Deployment') return 1;
-		if (stage === 'Blue/Green') return 0.6;
-		if (stage === 'HealthCheck & 트래픽 전환') return 0.3;
-		return 0;
-	});
-
-	let spaceEarthOpacity = $derived.by(() => {
-		if (hasError) return 0;
-		if (stage === 'Blue/Green') return 1;
-		if (stage === 'HealthCheck & 트래픽 전환') return 0;
-		if (stage === 'Completed') return 0;
-		return 0;
-	});
-
-	let earthPlanetOpacity = $derived.by(() => {
-		if (hasError) return 0;
-		if (stage === 'Blue/Green') return 1;
-		if (stage === 'HealthCheck & 트래픽 전환') return 0;
-		if (stage === 'Completed') return 0;
-		return 0;
-	});
-
-	let marsPlanetOpacity = $derived.by(() => {
-		if (hasError) return 0;
-		if (stage === 'HealthCheck & 트래픽 전환') return 1;
-		if (stage === 'Completed') return 0;
-		return 0;
-	});
-
-	let jupiterPlanetOpacity = $derived.by(() => {
-		if (hasError) return 0;
-		if (stage === 'HealthCheck & 트래픽 전환') return 1;
-		if (stage === 'Completed') return 0;
 		return 0;
 	});
 
 	let spacePlanetsOpacity = $derived.by(() => {
 		if (hasError) return 0;
-		if (stage === 'HealthCheck & 트래픽 전환') return 1;
-		if (stage === 'Completed') return 0;
+		if (
+			stage === 'Blue/Green' ||
+			stage === 'HealthCheck & 트래픽 전환' ||
+			stage === 'Completed'
+		)
+			return 1;
 		return 0;
 	});
 
@@ -112,166 +70,63 @@
 		</svg>
 	</div>
 
-	<!-- 대기권 (구름층, 하늘 점점 어두워짐) -->
+	<!-- 대기권 (구름층) -->
 	<div
-		class="absolute inset-0 bg-gradient-to-b from-blue-400 via-blue-500 to-blue-600 transition-opacity duration-3000 ease-in-out"
-		style="opacity: {troposphereOpacity};"
+		class="absolute inset-0 bg-gradient-to-b from-sky-500 via-blue-600 to-blue-900 transition-opacity duration-3000 ease-in-out"
+		style="opacity: {atmosphereOpacity};"
 	>
-		<!-- 구름들 (SVG 아이콘, 군데군데) -->
 		<svg class="absolute top-10 left-5 w-32 h-20" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
 			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
 			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
 		</svg>
-		<svg class="absolute" style="top: 25%; left: 15%; width: 10rem; height: 6rem;" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
-		</svg>
-		<svg class="absolute" style="top: 40%; right: 20%; width: 9rem; height: 5.5rem;" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
-		</svg>
-		<svg class="absolute top-15 left-1/2 w-44 h-28" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
-		</svg>
-		<svg class="absolute" style="top: 55%; left: 33.333333%; width: 9.5rem; height: 6rem;" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
-		</svg>
-		<svg class="absolute" style="top: 70%; right: 33.333333%; width: 10.5rem; height: 6.5rem;" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+		<svg class="absolute" style="top: 30%; left: 10%; width: 9rem; height: 5rem;" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
 			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.55"/>
 			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.45"/>
 		</svg>
 	</div>
 
-	<!-- 중간권 1 (파란 하늘 -> 짙은 남색) -->
-	<div
-		class="absolute inset-0 bg-gradient-to-b from-blue-600 via-indigo-700 to-indigo-900 transition-opacity duration-3000 ease-in-out"
-		style="opacity: {stratosphereOpacity};"
-	>
-		<!-- 구름들 (바닥 부분에만, SVG 아이콘, 희미하게) -->
-		<svg class="absolute bottom-0 left-5 w-32 h-20" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.4"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.35"/>
-		</svg>
-		<svg class="absolute bottom-0 left-1/4 w-40 h-24" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.4"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.35"/>
-		</svg>
-		<svg class="absolute bottom-0 right-1/4 w-36 h-22" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.4"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.35"/>
-		</svg>
-		<svg class="absolute bottom-0 right-10 w-38 h-23" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path d="M12 32C8 32 4 28 4 24C4 20 8 16 12 16C12 12 16 8 20 8C24 8 28 12 28 16C32 16 36 20 36 24C36 28 32 32 28 32H12Z" fill="white" opacity="0.4"/>
-			<path d="M20 24C20 20 24 16 28 16C28 12 32 8 36 8C40 8 44 12 44 16C48 16 52 20 52 24C52 28 48 32 44 32H20V24Z" fill="white" opacity="0.35"/>
-		</svg>
-		<!-- 별들 (약간) -->
-		{#each Array(30) as _, i}
-			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 60}%; width: 0.5rem; height: 0.5rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.9"/>
-			</svg>
-		{/each}
-	</div>
-
-	<!-- 중간권 2 (남색 -> 우주 분위기) -->
+	<!-- 중간권 (안정적인 우주) -->
 	<div
 		class="absolute inset-0 bg-gradient-to-b from-indigo-900 via-purple-900 to-black transition-opacity duration-3000 ease-in-out"
-		style="opacity: {mesosphereOpacity};"
+		style="opacity: {midOrbitOpacity};"
 	>
-		<!-- 별들 (더 많이, SVG 아이콘) -->
-		{#each Array(60) as _, i}
-			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.5rem; height: 0.5rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.9"/>
+		{#each Array(50) as _, i}
+			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.6rem; height: 0.6rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.85"/>
 			</svg>
 		{/each}
-		<!-- 작은 행성들 (먼 행성처럼, SVG 아이콘) -->
-		<svg class="absolute top-20 right-20 w-3 h-3 animate-twinkle opacity-60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<circle cx="12" cy="12" r="10" fill="url(#small-planet-yellow)"/>
-			<defs>
-				<radialGradient id="small-planet-yellow" cx="30%" cy="30%">
-					<stop offset="0%" stop-color="#fde047" />
-					<stop offset="100%" stop-color="#fbbf24" />
-				</radialGradient>
-			</defs>
-		</svg>
-		<svg class="absolute animate-twinkle opacity-50" style="top: 30%; left: 30%; width: 0.5rem; height: 0.5rem; animation-delay: 0.5s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<circle cx="12" cy="12" r="10" fill="url(#small-planet-blue)"/>
-			<defs>
-				<radialGradient id="small-planet-blue" cx="30%" cy="30%">
-					<stop offset="0%" stop-color="#93c5fd" />
-					<stop offset="100%" stop-color="#3b82f6" />
-				</radialGradient>
-			</defs>
-		</svg>
-		<svg class="absolute animate-twinkle opacity-55" style="top: 50%; right: 40%; width: 0.625rem; height: 0.625rem; animation-delay: 1s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<circle cx="12" cy="12" r="10" fill="url(#small-planet-purple)"/>
-			<defs>
-				<radialGradient id="small-planet-purple" cx="30%" cy="30%">
-					<stop offset="0%" stop-color="#c4b5fd" />
-					<stop offset="100%" stop-color="#8b5cf6" />
-				</radialGradient>
-			</defs>
-		</svg>
 	</div>
 
-	<!-- 우주 (지구) -->
-	<div
-		class="absolute inset-0 bg-black transition-opacity duration-3000 ease-in-out"
-		style="opacity: {spaceEarthOpacity};"
-	>
-		<!-- 별들 (SVG 아이콘) -->
-		{#each Array(100) as _, i}
-			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.75rem; height: 0.75rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.9"/>
-			</svg>
-		{/each}
-		<!-- 지구 (왼쪽 아래 모서리) -->
-		<div
-			class="absolute bottom-10 left-10 w-48 h-48 bg-gradient-to-br from-blue-500 via-green-500 to-blue-600 rounded-full shadow-2xl transition-opacity duration-3000 ease-in-out"
-			style="box-shadow: 0 0 80px rgba(59, 130, 246, 0.6); opacity: {earthPlanetOpacity};"
-		>
-			<div class="absolute inset-6 bg-blue-500/30 rounded-full"></div>
-			<div class="absolute top-12 left-12 w-9 h-9 bg-green-400/50 rounded-full"></div>
-			<div class="absolute bottom-12 right-12 w-8 h-8 bg-blue-300/50 rounded-full"></div>
-		</div>
-	</div>
-
-	<!-- 우주 (행성들) - 지구에서 목성 방향으로 먼 행성들이 하나씩 나타남 -->
+	<!-- 우주 (행성들) -->
 	<div
 		class="absolute inset-0 bg-black transition-opacity duration-3000 ease-in-out"
 		style="opacity: {spacePlanetsOpacity};"
 	>
-		<!-- 별들 (SVG 아이콘) -->
 		{#each Array(100) as _, i}
-			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.75rem; height: 0.75rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.7rem; height: 0.7rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.9"/>
 			</svg>
 		{/each}
-		<!-- 지구 (왼쪽 아래 모서리) -->
 		<div
-			class="absolute bottom-10 left-10 w-48 h-48 bg-gradient-to-br from-blue-500 via-green-500 to-blue-600 rounded-full shadow-2xl transition-opacity duration-3000 ease-in-out"
-			style="box-shadow: 0 0 80px rgba(59, 130, 246, 0.6); opacity: {earthPlanetOpacity};"
+			class="absolute bottom-8 left-8 w-48 h-48 bg-gradient-to-br from-blue-500 via-green-500 to-blue-600 rounded-full shadow-2xl transition-opacity duration-3000 ease-in-out"
+			style="box-shadow: 0 0 80px rgba(59, 130, 246, 0.6);"
 		>
 			<div class="absolute inset-6 bg-blue-500/30 rounded-full"></div>
 			<div class="absolute top-12 left-12 w-9 h-9 bg-green-400/50 rounded-full"></div>
 			<div class="absolute bottom-12 right-12 w-8 h-8 bg-blue-300/50 rounded-full"></div>
 		</div>
-		<!-- 화성 (지구 다음) -->
 		<div
-			class="absolute top-20 right-20 w-36 h-36 bg-gradient-to-br from-red-500 to-orange-600 rounded-full shadow-2xl animate-float transition-opacity duration-3000 ease-in-out"
-			style="box-shadow: 0 0 60px rgba(239, 68, 68, 0.5); animation-duration: 28s; animation-delay: 1s; opacity: {marsPlanetOpacity};"
+			class="absolute top-16 right-16 w-36 h-36 bg-gradient-to-br from-red-500 to-orange-600 rounded-full shadow-2xl animate-float transition-opacity duration-3000 ease-in-out"
+			style="box-shadow: 0 0 60px rgba(239, 68, 68, 0.5); animation-duration: 28s; animation-delay: 1s;"
 		>
 			<div class="absolute inset-4 bg-red-500/30 rounded-full"></div>
 			<div class="absolute top-8 left-12 w-6 h-6 bg-orange-400/50 rounded-full"></div>
 		</div>
-		<!-- 목성 (더 먼 행성) -->
 		<div
-			class="absolute top-40 left-20 w-40 h-40 bg-gradient-to-br from-orange-400 to-amber-500 rounded-full shadow-2xl animate-float transition-opacity duration-3000 ease-in-out"
-			style="box-shadow: 0 0 70px rgba(251, 146, 60, 0.6); animation-duration: 30s; animation-delay: 2s; opacity: {jupiterPlanetOpacity};"
+			class="absolute top-36 left-20 w-40 h-40 bg-gradient-to-br from-orange-400 to-amber-500 rounded-full shadow-2xl animate-float transition-opacity duration-3000 ease-in-out"
+			style="box-shadow: 0 0 70px rgba(251, 146, 60, 0.6); animation-duration: 30s; animation-delay: 2s;"
 		>
 			<div class="absolute inset-4 bg-orange-400/30 rounded-full"></div>
-			<!-- 목성의 줄무늬 -->
 			<div class="absolute top-1/2 left-0 right-0 h-2 bg-amber-600/40"></div>
 			<div class="absolute top-1/3 left-0 right-0 h-1.5 bg-orange-500/40"></div>
 			<div class="absolute top-2/3 left-0 right-0 h-1.5 bg-amber-700/40"></div>

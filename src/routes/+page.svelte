@@ -145,7 +145,16 @@
             // (SSE에서 이미 isActive를 false로 설정했거나, 사용자가 리셋할 때까지 유지)
           }
         } catch (error) {
-          console.error("Failed to poll deployment result:", error);
+        console.error("Failed to poll deployment result:", error);
+        if (error instanceof Error && error.message.includes("배포 결과를 찾을 수 없습니다")) {
+          localStorage.removeItem("deploymentId");
+          if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+          }
+          currentDeployment.set({ deploymentId: null, isActive: false });
+          launchModalOpen = false;
+        }
         }
       };
 
@@ -492,7 +501,7 @@
   <SpaceBackground />
 
   <!-- 배포 결과 우주선 애니메이션 -->
-  <DeploymentSpaceships {result} />
+  <DeploymentSpaceships {result} deploymentId={currentDeploymentState.deploymentId} />
 
   <!-- 기존 발사 버튼은 LaunchModal 안으로 이동 (주석처리) -->
 

@@ -41,9 +41,9 @@ export interface DeployRequest {
 }
 
 export interface DeployResponse {
-	code: number;
-	message: string;
-	data: {
+	code?: number;
+	message?: string;
+	data?: {
 		deploymentId: string;
 		message: string;
 	};
@@ -75,14 +75,14 @@ export interface DeploymentResultData {
 }
 
 export interface DeploymentResult {
-	code: number;
-	message: string;
-	data: DeploymentResultData;
+	code?: number;
+	message?: string;
+	data?: DeploymentResultData;
 }
 
 export interface CurrentDeploymentResponse {
-	code: number;
-	message: string;
+	code?: number;
+	message?: string;
 	data?: {
 		deploymentId: string;
 		isActive: boolean;
@@ -102,12 +102,46 @@ export interface AWSConnectionInfo {
 }
 
 export interface ConnectionsResponse {
-	code: number;
-	message: string;
-	data: {
-		github: GitHubConnectionInfo[];
-		aws: AWSConnectionInfo[];
+	code?: number;
+	message?: string;
+	data?: {
+		github?: GitHubConnectionInfo[];
+		aws?: AWSConnectionInfo[];
 	};
+}
+
+interface ApiResponse<T = any> {
+	code?: number;
+	message?: string;
+	data?: T;
+	error?: boolean;
+}
+
+const DEFAULT_ERROR_MESSAGE = 'API 요청에 실패했습니다.';
+
+async function parseApiResponse<T = any>(response: Response): Promise<ApiResponse<T>> {
+	const text = await response.text();
+	let parsed: ApiResponse<T> = {};
+
+	if (text) {
+		try {
+			parsed = JSON.parse(text);
+		} catch {
+			// ignore parse errors
+		}
+	}
+
+	if (!response.ok) {
+		const errorMessage = parsed.message || response.statusText || DEFAULT_ERROR_MESSAGE;
+		throw new Error(errorMessage);
+	}
+
+	if (parsed.error) {
+		const errorMessage = parsed.message || DEFAULT_ERROR_MESSAGE;
+		throw new Error(errorMessage);
+	}
+
+	return parsed;
 }
 
 /**
@@ -120,22 +154,13 @@ export async function connectGitHub(request: GitHubConnectRequest): Promise<{ gi
 		body: JSON.stringify(request)
 	});
 
-	const data = await response.json();
+	const payload = await parseApiResponse<GitHubConnectResponse['data']>(response);
 
-	if (!response.ok) {
-		// 에러 응답 형식: { timestamp, status, error, message } 또는 { code, message }
-		const errorMessage = data.message || `GitHub connection failed: ${response.statusText}`;
-		throw new Error(errorMessage);
+	if (!payload.data || !payload.data.githubConnectionId) {
+		throw new Error(payload.message || 'GitHub 연결 ID가 없습니다.');
 	}
 
-	// 성공 응답 형식: { code: 0, message: "...", data: { githubConnectionId: "..." } }
-	if (data.code === 0 && data.data && data.data.githubConnectionId) {
-		return { githubConnectionId: data.data.githubConnectionId };
-	}
-
-	// code가 0이 아닌 경우 에러 메시지 반환
-	const errorMessage = data.message || 'Invalid response format from GitHub connection API';
-	throw new Error(errorMessage);
+	return { githubConnectionId: payload.data.githubConnectionId };
 }
 
 /**
@@ -148,22 +173,13 @@ export async function connectAWS(request: AWSConnectRequest): Promise<{ awsConne
 		body: JSON.stringify(request)
 	});
 
-	const data = await response.json();
+	const payload = await parseApiResponse<AWSConnectResponse['data']>(response);
 
-	if (!response.ok) {
-		// 에러 응답 형식: { timestamp, status, error, message } 또는 { code, message }
-		const errorMessage = data.message || `AWS connection failed: ${response.statusText}`;
-		throw new Error(errorMessage);
+	if (!payload.data || !payload.data.awsConnectionId) {
+		throw new Error(payload.message || 'AWS 연결 ID가 없습니다.');
 	}
 
-	// 성공 응답 형식: { code: 0, message: "...", data: { awsConnectionId: "..." } }
-	if (data.code === 0 && data.data && data.data.awsConnectionId) {
-		return { awsConnectionId: data.data.awsConnectionId };
-	}
-
-	// code가 0이 아닌 경우 에러 메시지 반환
-	const errorMessage = data.message || 'Invalid response format from AWS connection API';
-	throw new Error(errorMessage);
+	return { awsConnectionId: payload.data.awsConnectionId };
 }
 
 /**
@@ -176,23 +192,16 @@ export async function startDeployment(request: DeployRequest): Promise<{ deploym
 		body: JSON.stringify(request)
 	});
 
-	const data: DeployResponse = await response.json();
+	const payload = await parseApiResponse<DeployResponse['data']>(response);
 
-	if (!response.ok) {
-		const errorMessage = data.message || `Deployment start failed: ${response.statusText}`;
-		throw new Error(errorMessage);
+	if (!payload.data || !payload.data.deploymentId) {
+		throw new Error(payload.message || '배포 ID가 없습니다.');
 	}
 
-	// 성공 응답 형식: { code: 0, message: "...", data: { deploymentId, message } }
-	if (data.code === 0 && data.data && data.data.deploymentId) {
-		return {
-			deploymentId: data.data.deploymentId,
-			message: data.data.message
-		};
-	}
-
-	const errorMessage = data.message || 'Invalid response format from deployment API';
-	throw new Error(errorMessage);
+	return {
+		deploymentId: payload.data.deploymentId,
+		message: payload.data.message
+	};
 }
 
 /**
@@ -201,18 +210,13 @@ export async function startDeployment(request: DeployRequest): Promise<{ deploym
 export async function getDeploymentResult(deploymentId: string): Promise<DeploymentResultData> {
 	const response = await fetch(`${API_BASE_URL}/deploy/${deploymentId}/result`);
 
-	if (!response.ok) {
-		throw new Error(`Failed to get deployment result: ${response.statusText}`);
+	const data = await parseApiResponse<DeploymentResultData>(response);
+
+	if (!data.data) {
+		throw new Error(data.message || '배포 결과가 없습니다.');
 	}
 
-	const data: DeploymentResult = await response.json();
-
-	// 성공 응답 형식: { code: 0, message: "...", data: {...} }
-	if (data.code === 0 && data.data) {
-		return data.data;
-	}
-
-	throw new Error(data.message || 'Invalid response format from deployment result API');
+	return data.data;
 }
 
 /**
@@ -224,23 +228,12 @@ export async function getConnections(): Promise<{ github: GitHubConnectionInfo[]
 		headers: { 'Content-Type': 'application/json' }
 	});
 
-	const data: ConnectionsResponse = await response.json();
+	const data = await parseApiResponse<ConnectionsResponse['data']>(response);
 
-	if (!response.ok) {
-		const errorMessage = data.message || `Failed to get connections: ${response.statusText}`;
-		throw new Error(errorMessage);
-	}
-
-	// 성공 응답 형식: { code: 0, message: "...", data: { github: [...], aws: [...] } }
-	if (data.code === 0 && data.data) {
-		return {
-			github: data.data.github || [],
-			aws: data.data.aws || []
-		};
-	}
-
-	const errorMessage = data.message || 'Invalid response format from connections API';
-	throw new Error(errorMessage);
+	return {
+		github: data.data?.github || [],
+		aws: data.data?.aws || []
+	};
 }
 
 /**
@@ -258,15 +251,9 @@ export async function getCurrentDeployment(): Promise<{ deploymentId: string | n
 			return null;
 		}
 
-		const data: CurrentDeploymentResponse = await response.json();
+		const data = await parseApiResponse<CurrentDeploymentResponse['data']>(response);
 
-		if (!response.ok) {
-			// 에러가 발생해도 null 반환 (배포가 없는 것으로 간주)
-			return null;
-		}
-
-		// 성공 응답 형식: { code: 0, message: "...", data: { deploymentId, isActive } }
-		if (data.code === 0 && data.data) {
+		if (data.data) {
 			return {
 				deploymentId: data.data.deploymentId,
 				isActive: data.data.isActive
@@ -278,4 +265,16 @@ export async function getCurrentDeployment(): Promise<{ deploymentId: string | n
 		// API가 없거나 에러가 발생하면 null 반환
 		return null;
 	}
+}
+
+/**
+ * 수동 트래픽 전환 (Blue/Green 배포)
+ */
+export async function switchTraffic(deploymentId: string): Promise<void> {
+	const response = await fetch(`${API_BASE_URL}/deploy/${deploymentId}/switch`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' }
+	});
+
+	await parseApiResponse(response);
 }

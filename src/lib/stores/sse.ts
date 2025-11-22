@@ -4,13 +4,10 @@ export type DeploymentEventType =
 	| 'status'
 	| 'log'
 	| 'stage'
-	| 'docker'
-	| 'ecr'
-	| 'ecs'
-	| 'codedeploy'
-	| 'bluegreen'
 	| 'done'
-	| 'error';
+	| 'error'
+	| 'success'
+	| 'fail';
 
 export interface DeploymentEvent {
 	type: DeploymentEventType;
@@ -34,6 +31,14 @@ export const deploymentEvents = writable<DeploymentEventsState>({
 	isComplete: false,
 	hasError: false
 });
+
+function getStageLabel(stageNum: number) {
+	if (stageNum === 1) return 'Docker Build';
+	if (stageNum === 2) return 'ECR Push';
+	if (stageNum === 3) return 'ECS Deployment';
+	if (stageNum >= 4) return 'Blue/Green';
+	return 'Idle';
+}
 
 /**
  * SSE(Server-Sent Events) 연결 생성
@@ -64,17 +69,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 				const hasError = false;
 
 				// 현재 단계 추출
-				let currentStage = state.currentStage;
-				if (data.type === 'stage' && data.details?.stage) {
-					const stageNum = data.details.stage;
-					if (stageNum === 1) currentStage = 'Docker Build';
-					else if (stageNum === 2) currentStage = 'ECR Push';
-					else if (stageNum === 3) currentStage = 'ECS Deployment';
-					else if (stageNum === 4) currentStage = 'Blue/Green';
-					else if (stageNum === 5) currentStage = 'HealthCheck & 트래픽 전환';
-					else if (stageNum === 6) currentStage = 'Completed';
-				}
-
+			let currentStage = state.currentStage;
+			if (data.type === 'stage' && data.details?.stage) {
+				currentStage = getStageLabel(data.details.stage);
+			}
 				return {
 					...state,
 					events: newEvents,
@@ -85,30 +83,6 @@ export function createSSEConnection(deploymentId: string): EventSource {
 			});
 		} catch (error) {
 			console.error('Failed to parse SSE stage event:', error);
-		}
-	});
-
-	// done 이벤트 핸들러
-	eventSource.addEventListener('done', (event: MessageEvent) => {
-		try {
-			const data: DeploymentEvent = JSON.parse(event.data);
-			const eventWithTimestamp: DeploymentEvent = {
-				...data,
-				timestamp: data.timestamp || new Date().toISOString()
-			};
-
-			deploymentEvents.update((state) => {
-				const newEvents = [...state.events, eventWithTimestamp];
-				return {
-					...state,
-					events: newEvents,
-					currentStage: 'Completed',
-					isComplete: true,
-					hasError: false
-				};
-			});
-		} catch (error) {
-			console.error('Failed to parse SSE done event:', error);
 		}
 	});
 
@@ -136,25 +110,52 @@ export function createSSEConnection(deploymentId: string): EventSource {
 		}
 	});
 
-	// 특정 이벤트 타입별 핸들러 (필요시)
-	eventSource.addEventListener('docker', (event: MessageEvent) => {
-		const data: DeploymentEvent = JSON.parse(event.data);
+	// success 이벤트 핸들러 (stage 4 완료)
+	eventSource.addEventListener('success', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
+
+			deploymentEvents.update((state) => {
+				const newEvents = [...state.events, eventWithTimestamp];
+				return {
+					...state,
+					events: newEvents,
+					currentStage: 'Completed',
+					isComplete: true,
+					hasError: false
+				};
+			});
+		} catch (error) {
+			console.error('Failed to parse SSE success event:', error);
+		}
 	});
 
-	eventSource.addEventListener('ecr', (event: MessageEvent) => {
-		const data: DeploymentEvent = JSON.parse(event.data);
-	});
+	// fail 이벤트 핸들러 (stage 4 실패)
+	eventSource.addEventListener('fail', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
 
-	eventSource.addEventListener('ecs', (event: MessageEvent) => {
-		const data: DeploymentEvent = JSON.parse(event.data);
-	});
-
-	eventSource.addEventListener('codedeploy', (event: MessageEvent) => {
-		const data: DeploymentEvent = JSON.parse(event.data);
-	});
-
-	eventSource.addEventListener('bluegreen', (event: MessageEvent) => {
-		const data: DeploymentEvent = JSON.parse(event.data);
+			deploymentEvents.update((state) => {
+				const newEvents = [...state.events, eventWithTimestamp];
+				return {
+					...state,
+					events: newEvents,
+					currentStage: data.details?.stage ? getStageLabel(data.details.stage) : 'Failed',
+					isComplete: true,
+					hasError: true
+				};
+			});
+		} catch (error) {
+			console.error('Failed to parse SSE fail event:', error);
+		}
 	});
 
 

@@ -1,15 +1,19 @@
 <script lang="ts">
   import type { DeploymentResultData } from "$lib/api/client";
+  import { switchTraffic } from "$lib/api/client";
+  import Swal from "sweetalert2";
 
   interface Props {
     result: DeploymentResultData | null;
+    deploymentId?: string | null;
   }
 
-  let { result }: Props = $props();
+  let { result, deploymentId = null }: Props = $props();
 
   // 정보창 표시 상태
   let blueInfoOpen = $state(false);
   let greenInfoOpen = $state(false);
+  let isSwitching = $state(false);
 
   // blue와 green 정보가 있는지 확인
   const hasBlue = $derived(
@@ -86,6 +90,56 @@
 
   function toggleGreenInfo() {
     greenInfoOpen = !greenInfoOpen;
+  }
+
+  async function handleManualSwitch() {
+    if (!deploymentId) {
+      Swal.fire({
+        icon: "error",
+        title: "오류",
+        text: "배포 ID가 없습니다.",
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
+      return;
+    }
+
+    const confirmResult = await Swal.fire({
+      icon: "question",
+      title: "수동 전환",
+      text: "트래픽을 전환하시겠습니까? (Blue/Green 배포)",
+      showCancelButton: true,
+      confirmButtonColor: "#3b82f6",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "전환",
+      cancelButtonText: "취소",
+    });
+
+    if (!confirmResult.isConfirmed) {
+      return;
+    }
+
+    isSwitching = true;
+    try {
+      await switchTraffic(deploymentId);
+      Swal.fire({
+        icon: "success",
+        title: "전환 완료",
+        text: "트래픽 전환이 시작되었습니다.",
+        confirmButtonColor: "#3b82f6",
+        confirmButtonText: "확인",
+      });
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "전환 실패",
+        text: error instanceof Error ? error.message : "트래픽 전환에 실패했습니다.",
+        confirmButtonColor: "#dc2626",
+        confirmButtonText: "확인",
+      });
+    } finally {
+      isSwitching = false;
+    }
   }
 </script>
 
@@ -305,6 +359,30 @@
             {/if}
           </div>
         </div>
+      {/if}
+
+      <!-- 수동 전환 버튼 (레이저 충돌 지점 아래 중앙) -->
+      {#if deploymentId}
+        <button
+          type="button"
+          onclick={handleManualSwitch}
+          disabled={isSwitching}
+          class="absolute pointer-events-auto px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 disabled:from-yellow-400 disabled:to-orange-400 text-white font-bold rounded-lg shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed z-30"
+          style="left: {collisionPoint}; top: calc(75% + 80px); transform: translateX(-50%) translateY(0);"
+          aria-label="수동 트래픽 전환"
+        >
+          {#if isSwitching}
+            <span class="flex items-center gap-2">
+              <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              전환 중...
+            </span>
+          {:else}
+            수동 전환
+          {/if}
+        </button>
       {/if}
     {:else if hasGreen}
       <!-- Green만 있는 경우: x방향으로 직선 이동하는 우주선 (UFO 아래 배치) -->
