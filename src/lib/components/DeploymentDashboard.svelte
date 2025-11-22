@@ -48,34 +48,43 @@
 		return icons[type] || '📋';
 	}
 
-	// 현재 단계에 대한 간략한 설명
-	function getStageDescription(stage: string): string {
+	// 가장 최근의 stage 이벤트에서 message 가져오기
+	function getLatestStageMessage(): string {
+		// events 배열에서 type이 'stage'인 가장 최근 이벤트 찾기
+		const stageEvents = events.filter(e => e.type === 'stage');
+		if (stageEvents.length > 0) {
+			const latestEvent = stageEvents[stageEvents.length - 1];
+			return latestEvent.message || '';
+		}
+		// stage 이벤트가 없으면 기본 메시지 반환
 		const descriptions: Record<string, string> = {
+			'SSE 연결 대기 중': 'SSE 연결을 준비하고 있습니다...',
+			'idle': '대기 중...',
 			'Docker Build': 'Docker 이미지 빌드 중...',
 			'ECR Push': 'ECR에 이미지 업로드 중...',
 			'ECS Deployment': 'ECS 서비스 배포 중...',
 			'Blue/Green': 'Blue/Green 배포 진행 중...',
-			'HealthCheck & 트래픽 전환': 'HealthCheck 및 트래픽 전환 중...',
 			'Completed': '배포 완료!',
 			'Failed': '배포 실패'
 		};
-		return descriptions[stage] || stage;
+		return descriptions[currentStage] || currentStage;
 	}
 
-	// Stage 기반 진행률 계산 (각 단계가 1/6씩 차지)
+	// Stage 기반 진행률 계산 (5단계: Docker Build, ECR Push, ECS Deployment, Blue/Green, Completed)
 	function getProgressPercentage(): number {
 		const stageMap: Record<string, number> = {
+			'SSE 연결 대기 중': 0,
 			'idle': 0,
-			'Docker Build': 1,
-			'ECR Push': 2,
-			'ECS Deployment': 3,
-			'Blue/Green': 4,
-			'HealthCheck & 트래픽 전환': 5,
-			'Completed': 6,
+			'Docker Build': 1, // 20%
+			'ECR Push': 2, // 40%
+			'ECS Deployment': 3, // 60%
+			'Blue/Green': 4, // 80%
+			'Completed': 5, // 100%
 			'Failed': 0
 		};
 		const stageNum = stageMap[currentStage] || 0;
-		return Math.min((stageNum / 6) * 100, 100);
+		// 5단계로 나눔 (Blue/Green이 80%, Completed가 100%)
+		return Math.min((stageNum / 5) * 100, 100);
 	}
 </script>
 
@@ -100,13 +109,13 @@
 
 		{#if !isComplete && !hasError}
 			<!-- 배포 중: 왼쪽 상단 모서리에 현재 단계만 표시 -->
-			<div class="absolute top-4 left-4 z-10 max-w-xs overflow-visible">
+			<div class="absolute top-4 left-4 z-10 min-w-[320px] overflow-visible">
 			<div class="bg-black/60 backdrop-blur-md rounded-lg p-4 border border-white/20">
 				<h2 class="text-sm font-semibold mb-2 text-white">현재 단계</h2>
 				<div class="space-y-2">
 					<div>
 						<p class="text-lg font-bold text-blue-400 mb-1">{currentStage}</p>
-						<p class="text-xs text-gray-300">{getStageDescription(currentStage)}</p>
+						<p class="text-xs text-gray-300 leading-relaxed break-words line-clamp-2">{getLatestStageMessage()}</p>
 						<div class="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
 							<div
 								class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
@@ -369,6 +378,15 @@
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb:hover {
 		background: rgba(255, 255, 255, 0.3);
+	}
+
+	/* 두 줄로 자연스럽게 넘어가게 하는 스타일 */
+	.line-clamp-2 {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		word-break: break-word;
 	}
 </style>
 

@@ -2,29 +2,39 @@
 	let { stage = 'idle', hasError = false } = $props();
 
 	// 배경 단계별 opacity 계산 (자연스러운 전환)
+	// idle: 지상 배경
 	let groundOpacity = $derived.by(() => {
 		if (hasError) return 0;
-		if (stage === 'idle' || stage === 'Docker Build') return 1;
+		if (stage === 'idle' || stage === 'SSE 연결 대기 중') return 1;
 		return 0;
 	});
 
+	// Docker Build: 대기권 배경
 	let atmosphereOpacity = $derived.by(() => {
+		if (hasError) return 0;
+		if (stage === 'Docker Build') return 1;
+		return 0;
+	});
+
+	// ECR Push: 중간권 배경
+	let midOrbitOpacity = $derived.by(() => {
 		if (hasError) return 0;
 		if (stage === 'ECR Push') return 1;
 		return 0;
 	});
 
-	let midOrbitOpacity = $derived.by(() => {
+	// ECS Deployment: 지구 보이는 우주 배경
+	let earthSpaceOpacity = $derived.by(() => {
 		if (hasError) return 0;
 		if (stage === 'ECS Deployment') return 1;
 		return 0;
 	});
 
+	// Blue/Green: 우주 배경 (행성들)
 	let spacePlanetsOpacity = $derived.by(() => {
 		if (hasError) return 0;
 		if (
 			stage === 'Blue/Green' ||
-			stage === 'HealthCheck & 트래픽 전환' ||
 			stage === 'Completed'
 		)
 			return 1;
@@ -95,6 +105,37 @@
 				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.85"/>
 			</svg>
 		{/each}
+	</div>
+
+	<!-- 지구 보이는 우주 (ECS Deployment) -->
+	<div
+		class="absolute inset-0 bg-black transition-opacity duration-3000 ease-in-out"
+		style="opacity: {earthSpaceOpacity};"
+	>
+		<!-- 별들 -->
+		{#each Array(80) as _, i}
+			<svg class="absolute animate-twinkle" style="left: {Math.random() * 100}%; top: {Math.random() * 100}%; width: 0.6rem; height: 0.6rem; animation-delay: {Math.random() * 2}s;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="white" opacity="0.85"/>
+			</svg>
+		{/each}
+		<!-- 지구 (하단 중앙에 배치) -->
+		<div
+			class="absolute bottom-16 left-1/2 transform -translate-x-1/2 w-64 h-64 bg-gradient-to-br from-blue-500 via-green-500 to-blue-600 rounded-full shadow-2xl transition-opacity duration-3000 ease-in-out"
+			style="box-shadow: 0 0 100px rgba(59, 130, 246, 0.7);"
+		>
+			<!-- 대륙 패턴 -->
+			<div class="absolute inset-0 rounded-full overflow-hidden">
+				<div class="absolute top-1/4 left-1/4 w-24 h-16 bg-green-600/60 rounded-full blur-sm"></div>
+				<div class="absolute top-1/3 right-1/4 w-20 h-14 bg-green-700/60 rounded-full blur-sm"></div>
+				<div class="absolute bottom-1/3 left-1/3 w-28 h-18 bg-green-500/50 rounded-full blur-sm"></div>
+				<div class="absolute bottom-1/4 right-1/3 w-22 h-15 bg-green-600/50 rounded-full blur-sm"></div>
+			</div>
+			<!-- 대기층 -->
+			<div class="absolute inset-2 bg-blue-500/30 rounded-full"></div>
+			<!-- 구름 패턴 -->
+			<div class="absolute top-1/3 left-1/4 w-12 h-8 bg-white/20 rounded-full blur-md"></div>
+			<div class="absolute top-1/2 right-1/4 w-16 h-10 bg-white/25 rounded-full blur-lg"></div>
+		</div>
 	</div>
 
 	<!-- 우주 (행성들) -->

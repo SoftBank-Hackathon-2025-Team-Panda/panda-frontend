@@ -113,7 +113,7 @@
       }
     });
 
-    // 배포 결과 polling (5초마다)
+    // 배포 결과 polling (5초마다) - 모달이 닫혀있을 때만 작동
     const startPolling = (deploymentId: string) => {
       if (pollingInterval) {
         clearInterval(pollingInterval);
@@ -121,6 +121,11 @@
       }
 
       const poll = async () => {
+        // 모달이 열려있으면 polling 중지 (SSE로 처리)
+        if (launchModalOpen) {
+          return;
+        }
+
         try {
           const deploymentResult = await getDeploymentResult(deploymentId);
 
@@ -145,16 +150,20 @@
             // (SSE에서 이미 isActive를 false로 설정했거나, 사용자가 리셋할 때까지 유지)
           }
         } catch (error) {
-        console.error("Failed to poll deployment result:", error);
-        if (error instanceof Error && error.message.includes("배포 결과를 찾을 수 없습니다")) {
-          localStorage.removeItem("deploymentId");
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
+          console.error("Failed to poll deployment result:", error);
+          // "배포 결과를 찾을 수 없습니다" 에러는 모달을 닫지 않고 무시
+          // (모달이 열려있으면 SSE가 처리하고, 닫혀있으면 나중에 다시 시도)
+          if (error instanceof Error && error.message.includes("배포 결과를 찾을 수 없습니다")) {
+            // 모달이 닫혀있고, 배포 ID가 더 이상 유효하지 않으면 상태 초기화
+            if (!launchModalOpen) {
+              localStorage.removeItem("deploymentId");
+              if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+              }
+              currentDeployment.set({ deploymentId: null, isActive: false });
+            }
           }
-          currentDeployment.set({ deploymentId: null, isActive: false });
-          launchModalOpen = false;
-        }
         }
       };
 
@@ -401,7 +410,7 @@
       console.error("Failed to play countdown sound:", e);
     }
 
-    // 카운트다운 중에 필요한 정보 확인 및 가져오기
+    // 카운트다운 시작 전에 필요한 정보 확인 및 가져오기
     let githubConfig = config.github;
     let awsConfig = config.aws;
 
@@ -416,21 +425,11 @@
       awsConfig = config.aws;
     }
 
-    // 카운트다운 진행
-    for (let i = 5; i > 0; i--) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (i > 1) {
-        countdown = i - 1;
-      } else {
-        countdown = null;
-      }
-    }
-
-    // 카운트다운이 끝난 후 배포 요청
-    // 필요한 정보가 여전히 없으면 에러
+    // 카운트다운 시작 전에 최종 검증
     if (!githubConfig.connected || !awsConfig.connected ||
         !githubConfig.connectionId || !awsConfig.connectionId ||
         !githubConfig.owner || !githubConfig.repo) {
+      countdown = null;
       Swal.fire({
         icon: 'warning',
         title: '발사 준비 미완료',
@@ -441,11 +440,41 @@
       return;
     }
 
+    // 카운트다운 진행
+    for (let i = 5; i > 0; i--) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (i > 1) {
+        countdown = i - 1;
+      } else {
+        countdown = null;
+      }
+    }
+
     deployConnecting = true;
     deployError = "";
     result = null;
 
+    // 1. 화면 전환 먼저 (즉시 사용자에게 피드백)
+    deploymentEvents.set({
+      events: [],
+      currentStage: 'idle',
+      isConnected: false,
+      isComplete: false,
+      hasError: false
+    });
+
+    // 2. isActive를 먼저 true로 설정하여 DeploymentDashboard가 표시되도록 함
+    // deploymentId는 아직 없지만, SSE 연결은 deploymentId가 있을 때만 시작되므로 문제없음
+    currentDeployment.set({
+      deploymentId: null,
+      isActive: true,
+    });
+
+    // 3. 모달 열기 (즉시 화면 전환 보이도록)
+    launchModalOpen = true;
+
     try {
+      // 4. 배포 API 호출
       const response = await startDeployment({
         githubConnectionId: githubConfig.connectionId,
         awsConnectionId: awsConfig.connectionId,
@@ -457,7 +486,17 @@
       // deploymentId를 localStorage에 저장 (polling을 위해 유지)
       localStorage.setItem("deploymentId", response.deploymentId);
 
-      // store 업데이트 (SSE 연결은 store 구독에서 자동으로 처리됨)
+      // 5. SSE 연결 대기 중 화면으로 전환
+      deploymentEvents.set({
+        events: [],
+        currentStage: 'SSE 연결 대기 중',
+        isConnected: false,
+        isComplete: false,
+        hasError: false
+      });
+
+      // 6. deploymentId 업데이트 (SSE 연결은 store 구독에서 자동으로 처리됨)
+      // SSE 연결 성공 후 Docker Build 화면으로 전환됨
       currentDeployment.set({
         deploymentId: response.deploymentId,
         isActive: true,
@@ -478,11 +517,27 @@
       } catch (e) {
         console.error("Failed to load rocket sound:", e);
       }
-
-      launchModalOpen = true;
     } catch (error) {
       deployError = error instanceof Error ? error.message : "배포 시작에 실패했습니다.";
       console.error("Deployment start error:", error);
+
+      // 에러 발생 시 상태 리셋
+      deploymentEvents.set({
+        events: [],
+        currentStage: 'idle',
+        isConnected: false,
+        isComplete: false,
+        hasError: false
+      });
+
+      // isActive를 false로 되돌림
+      currentDeployment.set({
+        deploymentId: null,
+        isActive: false,
+      });
+
+      launchModalOpen = false;
+
       Swal.fire({
         icon: "error",
         title: "배포 시작 실패",
