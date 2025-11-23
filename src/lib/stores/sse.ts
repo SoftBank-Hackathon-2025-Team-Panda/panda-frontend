@@ -77,8 +77,23 @@ export function createSSEConnection(deploymentId: string): EventSource {
 			const data = JSON.parse(event.data);
 			console.log('[SSE] Connected event received:', data.message);
 			console.log('[SSE] Connected event parsed data:', data);
-			// 연결 확인 로그만 남기고 상태는 onopen에서 이미 처리됨
-			// events 배열에 추가하지 않음 (전체 로그에서 제외)
+
+			deploymentEvents.update((state) => {
+				if ((state.currentStage === 'SSE 연결 대기 중' || state.currentStage === 'idle' || !state.isComplete) && !state.hasError) {
+					return {
+						...state,
+						events: [],
+						currentStage: 'Docker Build',
+						isConnected: true,
+						isComplete: false,
+						hasError: false
+					};
+				}
+				return {
+					...state,
+					isConnected: true
+				};
+			});
 		} catch (error) {
 			console.error('[SSE] Failed to parse SSE connected event:', error);
 			console.error('[SSE] Connected event raw data:', event.data);
@@ -106,6 +121,10 @@ export function createSSEConnection(deploymentId: string): EventSource {
 		}
 		// SSE 연결 성공 후 "SSE 연결 대기 중" 또는 idle 상태에서 Docker Build 화면으로 전환
 		deploymentEvents.update((state) => {
+			if (state.isConnected && state.currentStage !== 'idle' && state.currentStage !== 'SSE 연결 대기 중') {
+				return state;
+			}
+
 			// "SSE 연결 대기 중" 또는 idle 상태이거나 완료되지 않았고 에러가 아닌 경우 Docker Build로 전환
 			if ((state.currentStage === 'SSE 연결 대기 중' || state.currentStage === 'idle' || !state.isComplete) && !state.hasError) {
 				return {
@@ -117,6 +136,7 @@ export function createSSEConnection(deploymentId: string): EventSource {
 					hasError: false
 				};
 			}
+
 			return {
 				...state,
 				isConnected: true
@@ -302,7 +322,7 @@ export function createSSEConnection(deploymentId: string): EventSource {
 						eventSource.close();
 						handleConnectionFailure(false);
 					}
-				}, 60000); // 60초 후 타임아웃 (재연결 시도 시간 충분히 확보)
+				}, 20000); // 60초 후 타임아웃 (재연결 시도 시간 충분히 확보)
 			}
 			return;
 		}
