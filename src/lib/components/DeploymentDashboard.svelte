@@ -243,7 +243,7 @@
 			</div>
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 flex-1 overflow-hidden pt-12 lg:pt-10">
 				<!-- 좌측: 현재 단계 및 상태 -->
-			<div class="lg:col-span-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
+			<div class="lg:col-span-1 space-y-4 overflow-y-auto custom-scrollbar pr-2 mt-16 lg:mt-12">
 					<!-- 현재 단계 카드 -->
 					<div class="bg-black/50 backdrop-blur-md rounded-lg p-6 border border-white/20">
 						<h2 class="text-xl font-semibold mb-4 text-white">배포 결과</h2>
@@ -302,7 +302,7 @@
 
 				<!-- 우측: 이벤트 로그 (배포 완료 후에만 표시) -->
 			{#if showDetailedLogs}
-				<div class="lg:col-span-2 flex flex-col overflow-hidden lg:ml-4">
+				<div class="lg:col-span-2 flex flex-col overflow-hidden lg:ml-4 mt-16 lg:mt-12">
 					<div class="bg-black/50 backdrop-blur-md rounded-lg p-6 border border-white/20 flex flex-col flex-1 min-h-0 overflow-hidden">
 							<h2 class="text-xl font-semibold mb-4 text-white">배포 로그</h2>
 						<div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">

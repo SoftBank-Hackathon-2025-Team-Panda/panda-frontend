@@ -15,16 +15,13 @@
   let greenInfoOpen = $state(false);
   let isSwitching = $state(false);
 
-  // blue와 green 정보가 있는지 확인
-  const hasBlue = $derived(
-    result?.blueUrl &&
-      (result?.blueLatencyMs !== null || result?.blueErrorRate !== null)
-  );
-  const hasGreen = $derived(
-    result?.greenUrl &&
-      (result?.greenLatencyMs !== null || result?.greenErrorRate !== null)
-  );
+  // blue와 green 정보가 있는지 확인 (URL만 있어도 됨)
+  const hasBlue = $derived(!!result?.blueUrl);
+  const hasGreen = $derived(!!result?.greenUrl);
   const hasBoth = $derived(hasBlue && hasGreen);
+
+  // deploymentId와 hasBoth가 모두 true인지 확인 (반응형)
+  const showManualSwitchButton = $derived(!!deploymentId && hasBoth);
 
   // fasterService에 따라 레이저 길이 비율 결정 (8:2 또는 2:8)
   // left-[30%]와 right-[30%] 사이의 거리 = 40vw, 우주선 너비 80px씩 제외
@@ -133,7 +130,10 @@
       Swal.fire({
         icon: "error",
         title: "전환 실패",
-        text: error instanceof Error ? error.message : "트래픽 전환에 실패했습니다.",
+        text:
+          error instanceof Error
+            ? error.message
+            : "트래픽 전환에 실패했습니다.",
         confirmButtonColor: "#dc2626",
         confirmButtonText: "확인",
       });
@@ -191,7 +191,8 @@
         {#each Array(blueDotCount) as _, i}
           <div
             class="laser-dot blue-dot"
-            style="animation-delay: {i * (result?.fasterService === 'blue' ? 0.15 : 0.3)}s;"
+            style="animation-delay: {i *
+              (result?.fasterService === 'blue' ? 0.15 : 0.3)}s;"
           ></div>
         {/each}
       </div>
@@ -199,8 +200,8 @@
       <!-- Blue 정보창 (우주선 왼쪽에 배치) -->
       {#if blueInfoOpen && hasBlue}
         <div
-          class="absolute bg-gray-900/95 backdrop-blur-lg border-2 border-blue-400 rounded-lg p-4 shadow-2xl pointer-events-auto min-w-[250px] z-30"
-          style="left: calc(30% - 270px); top: {fixedY}; transform: translateY(-50%);"
+          class="absolute bg-gray-900/95 backdrop-blur-lg border-2 border-blue-400 rounded-lg p-4 shadow-2xl pointer-events-auto min-w-[250px] max-w-[300px] z-30"
+          style="left: calc(30% - 300px); top: {fixedY}; transform: translateY(-50%);"
         >
           <div class="flex justify-between items-center mb-2">
             <h3 class="text-blue-400 font-bold text-lg">Blue Service</h3>
@@ -227,12 +228,12 @@
           </div>
           <div class="space-y-2 text-sm text-gray-300">
             {#if result.blueUrl}
-              <div>
+              <div class="break-words">
                 <span class="text-gray-500">URL:</span>
                 <a
                   href={result.blueUrl}
                   target="_blank"
-                  class="text-blue-400 hover:underline ml-2"
+                  class="text-blue-400 hover:underline ml-2 break-all"
                 >
                   {result.blueUrl}
                 </a>
@@ -296,7 +297,8 @@
         {#each Array(greenDotCount) as _, i}
           <div
             class="laser-dot green-dot"
-            style="animation-delay: {i * (result?.fasterService === 'green' ? 0.15 : 0.3)}s;"
+            style="animation-delay: {i *
+              (result?.fasterService === 'green' ? 0.15 : 0.3)}s;"
           ></div>
         {/each}
       </div>
@@ -304,8 +306,8 @@
       <!-- Green 정보창 (우주선 왼쪽에 배치) -->
       {#if greenInfoOpen && hasGreen}
         <div
-          class="absolute bg-gray-900/95 backdrop-blur-lg border-2 border-green-400 rounded-lg p-4 shadow-2xl pointer-events-auto min-w-[250px] z-30"
-          style="left: calc(70% + 20px); top: {fixedY}; transform: translateY(-50%);"
+          class="absolute bg-gray-900/95 backdrop-blur-lg border-2 border-green-400 rounded-lg p-4 shadow-2xl pointer-events-auto min-w-[250px] max-w-[300px] z-30"
+          style="left: calc(70%); top: {fixedY}; transform: translateY(-50%);"
         >
           <div class="flex justify-between items-center mb-2">
             <h3 class="text-green-400 font-bold text-lg">Green Service</h3>
@@ -332,12 +334,12 @@
           </div>
           <div class="space-y-2 text-sm text-gray-300">
             {#if result.greenUrl}
-              <div>
+              <div class="break-words">
                 <span class="text-gray-500">URL:</span>
                 <a
                   href={result.greenUrl}
                   target="_blank"
-                  class="text-green-400 hover:underline ml-2"
+                  class="text-green-400 hover:underline ml-2 break-all"
                 >
                   {result.greenUrl}
                 </a>
@@ -362,25 +364,36 @@
       {/if}
 
       <!-- 수동 전환 버튼 (레이저 충돌 지점 아래 중앙) -->
-      {#if deploymentId}
+       {#if showManualSwitchButton}
         <button
           type="button"
           onclick={handleManualSwitch}
           disabled={isSwitching}
           class="absolute pointer-events-auto px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 disabled:from-yellow-400 disabled:to-orange-400 text-white font-bold rounded-lg shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed z-30"
-          style="left: {collisionPoint}; top: calc(75% + 80px); transform: translateX(-50%) translateY(0);"
+          style="left: calc(30% + 300px); top: calc(80% + 50px); transform: translateX(-50%) translateY(0);"
           aria-label="수동 트래픽 전환"
         >
           {#if isSwitching}
             <span class="flex items-center gap-2">
               <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
               전환 중...
             </span>
           {:else}
-            수동 전환
+            Blue to Green
           {/if}
         </button>
       {/if}
@@ -506,7 +519,12 @@
   .blue-dot {
     width: 6px;
     height: 6px;
-    background: radial-gradient(circle, rgba(191, 219, 254, 1) 0%, rgba(96, 165, 250, 0.8) 50%, transparent 100%);
+    background: radial-gradient(
+      circle,
+      rgba(191, 219, 254, 1) 0%,
+      rgba(96, 165, 250, 0.8) 50%,
+      transparent 100%
+    );
     box-shadow:
       0 0 8px rgba(96, 165, 250, 1),
       0 0 16px rgba(96, 165, 250, 0.8),
@@ -520,7 +538,12 @@
   .green-dot {
     width: 6px;
     height: 6px;
-    background: radial-gradient(circle, rgba(187, 247, 208, 1) 0%, rgba(52, 211, 153, 0.8) 50%, transparent 100%);
+    background: radial-gradient(
+      circle,
+      rgba(187, 247, 208, 1) 0%,
+      rgba(52, 211, 153, 0.8) 50%,
+      transparent 100%
+    );
     box-shadow:
       0 0 8px rgba(52, 211, 153, 1),
       0 0 16px rgba(52, 211, 153, 0.8),

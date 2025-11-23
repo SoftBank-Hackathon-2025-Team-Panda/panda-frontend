@@ -34,6 +34,17 @@ export const deploymentEvents = writable<DeploymentEventsState>({
 	hasError: false
 });
 
+// 배포 로그를 별도로 저장하는 store (events와 분리)
+export const deploymentLogs = writable<DeploymentEvent[]>([]);
+
+/**
+ * 배포 로그 초기화
+ */
+export function clearDeploymentLogs() {
+	deploymentLogs.set([]);
+	console.log('[SSE] Deployment logs cleared');
+}
+
 function getStageLabel(stageNum: number) {
 	if (stageNum === 1) return 'Docker Build';
 	if (stageNum === 2) return 'ECR Push';
@@ -51,11 +62,8 @@ export function createSSEConnection(deploymentId: string): EventSource {
 	console.log('[SSE] Connecting to:', url);
 	console.log('[SSE] Connection attempt started at:', new Date().toISOString());
 
-	// 초기 상태 업데이트
-	deploymentEvents.update((state) => ({
-		...state,
-		events: []
-	}));
+	// 초기 상태 업데이트 (로그는 별도 store에 저장되므로 여기서는 초기화하지 않음)
+	// deploymentEvents는 상태 관리용, deploymentLogs는 로그 저장용
 
 	const eventSource = new EventSource(url);
 
@@ -82,7 +90,6 @@ export function createSSEConnection(deploymentId: string): EventSource {
 				if ((state.currentStage === 'SSE 연결 대기 중' || state.currentStage === 'idle' || !state.isComplete) && !state.hasError) {
 					return {
 						...state,
-						events: [],
 						currentStage: 'Docker Build',
 						isConnected: true,
 						isComplete: false,
@@ -129,7 +136,6 @@ export function createSSEConnection(deploymentId: string): EventSource {
 			if ((state.currentStage === 'SSE 연결 대기 중' || state.currentStage === 'idle' || !state.isComplete) && !state.hasError) {
 				return {
 					...state,
-					events: [],
 					currentStage: 'Docker Build',
 					isConnected: true,
 					isComplete: false,
@@ -144,6 +150,80 @@ export function createSSEConnection(deploymentId: string): EventSource {
 		});
 	};
 
+	// log 이벤트 핸들러 (일반 로그 메시지)
+	eventSource.addEventListener('log', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			console.log('[SSE] Log event received:', data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
+
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+		} catch (error) {
+			console.error('[SSE] Failed to parse SSE log event:', error);
+		}
+	});
+
+	// status 이벤트 핸들러
+	eventSource.addEventListener('status', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			console.log('[SSE] Status event received:', data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
+
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+		} catch (error) {
+			console.error('[SSE] Failed to parse SSE status event:', error);
+		}
+	});
+
+	// error 이벤트 핸들러
+	eventSource.addEventListener('error', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			console.log('[SSE] Error event received:', data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
+
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+
+			// 상태 업데이트
+			deploymentEvents.update((state) => ({
+				...state,
+				hasError: true
+			}));
+		} catch (error) {
+			console.error('[SSE] Failed to parse SSE error event:', error);
+		}
+	});
+
+	// done 이벤트 핸들러
+	eventSource.addEventListener('done', (event: MessageEvent) => {
+		try {
+			const data: DeploymentEvent = JSON.parse(event.data);
+			console.log('[SSE] Done event received:', data);
+			const eventWithTimestamp: DeploymentEvent = {
+				...data,
+				timestamp: data.timestamp || new Date().toISOString()
+			};
+
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+		} catch (error) {
+			console.error('[SSE] Failed to parse SSE done event:', error);
+		}
+	});
+
 	// stage 이벤트 핸들러
 	eventSource.addEventListener('stage', (event: MessageEvent) => {
 		try {
@@ -154,26 +234,28 @@ export function createSSEConnection(deploymentId: string): EventSource {
 				timestamp: data.timestamp || new Date().toISOString()
 			};
 
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+
+			// 상태 업데이트
 			deploymentEvents.update((state) => {
-				const newEvents = [...state.events, eventWithTimestamp];
 				const isComplete = false;
 				const hasError = false;
 
 				// 현재 단계 추출
-			let currentStage = state.currentStage;
-			if (data.type === 'stage' && data.details?.stage) {
-				currentStage = getStageLabel(data.details.stage);
-			}
+				let currentStage = state.currentStage;
+				if (data.type === 'stage' && data.details?.stage) {
+					currentStage = getStageLabel(data.details.stage);
+				}
 				return {
 					...state,
-					events: newEvents,
 					currentStage,
 					isComplete,
 					hasError
 				};
 			});
 		} catch (error) {
-			console.error('Failed to parse SSE stage event:', error);
+			console.error('[SSE] Failed to parse SSE stage event:', error);
 		}
 	});
 
@@ -187,22 +269,22 @@ export function createSSEConnection(deploymentId: string): EventSource {
 				timestamp: data.timestamp || new Date().toISOString()
 			};
 
-			deploymentEvents.update((state) => {
-				const newEvents = [...state.events, eventWithTimestamp];
-				return {
-					...state,
-					events: newEvents,
-					currentStage: 'Completed',
-					isComplete: true,
-					hasError: false
-				};
-			});
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+
+			// 상태 업데이트
+			deploymentEvents.update((state) => ({
+				...state,
+				currentStage: 'Completed',
+				isComplete: true,
+				hasError: false
+			}));
 
 			// 배포 완료 후 SSE 연결 종료
 			console.log('[SSE] Closing connection after success event');
 			eventSource.close();
 		} catch (error) {
-			console.error('Failed to parse SSE success event:', error);
+			console.error('[SSE] Failed to parse SSE success event:', error);
 		}
 	});
 
@@ -216,22 +298,22 @@ export function createSSEConnection(deploymentId: string): EventSource {
 				timestamp: data.timestamp || new Date().toISOString()
 			};
 
-			deploymentEvents.update((state) => {
-				const newEvents = [...state.events, eventWithTimestamp];
-				return {
-					...state,
-					events: newEvents,
-					currentStage: data.details?.stage ? getStageLabel(data.details.stage) : 'Failed',
-					isComplete: true,
-					hasError: true
-				};
-			});
+			// 로그를 별도 store에 추가
+			deploymentLogs.update((logs) => [...logs, eventWithTimestamp]);
+
+			// 상태 업데이트
+			deploymentEvents.update((state) => ({
+				...state,
+				currentStage: data.details?.stage ? getStageLabel(data.details.stage) : 'Failed',
+				isComplete: true,
+				hasError: true
+			}));
 
 			// 배포 실패 후 SSE 연결 종료
 			console.log('[SSE] Closing connection after fail event');
 			eventSource.close();
 		} catch (error) {
-			console.error('Failed to parse SSE fail event:', error);
+			console.error('[SSE] Failed to parse SSE fail event:', error);
 		}
 	});
 
@@ -255,10 +337,11 @@ export function createSSEConnection(deploymentId: string): EventSource {
 					message: 'SSE 연결에 실패했습니다.',
 					timestamp: new Date().toISOString()
 				};
-				const newEvents = [...state.events, failEvent];
+				// 로그를 별도 store에 추가
+				deploymentLogs.update((logs) => [...logs, failEvent]);
+
 				return {
 					...state,
-					events: newEvents,
 					isConnected: false,
 					isComplete: true,
 					hasError: true,

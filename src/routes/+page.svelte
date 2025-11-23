@@ -3,8 +3,10 @@
   import { deploymentConfig, currentDeployment, type DeploymentConfig } from "$lib/stores/deployment";
   import {
     deploymentEvents,
+    deploymentLogs,
     createSSEConnection,
     closeSSEConnection,
+    clearDeploymentLogs,
     type DeploymentEvent,
     type DeploymentEventType,
   } from "$lib/stores/sse";
@@ -70,6 +72,9 @@
     hasError: false,
   });
 
+  // 배포 로그를 별도로 관리
+  let logs = $state<DeploymentEvent[]>([]);
+
 	let eventSource: EventSource | null = null;
 	let result = $state<DeploymentResultData | null>(null);
 
@@ -113,7 +118,12 @@
       }
     });
 
-    // 배포 결과 polling (5초마다) - 모달이 닫혀있을 때만 작동
+    // 배포 로그 구독
+    const unsubscribeLogs = deploymentLogs.subscribe((value) => {
+      logs = value;
+    });
+
+    // 배포 결과 polling (2초마다) - 모달이 닫혀있을 때만 작동
     const startPolling = (deploymentId: string) => {
       if (pollingInterval) {
         clearInterval(pollingInterval);
@@ -169,8 +179,8 @@
 
       // 즉시 한 번 실행
       poll();
-      // 5초마다 polling
-      pollingInterval = setInterval(poll, 5000);
+      // 2초마다 polling
+      pollingInterval = setInterval(poll, 2000);
     };
 
     // 초기 상태 조회: 연결 정보 및 localStorage에서 배포 상태 복원
@@ -181,6 +191,7 @@
       unsubscribeConfig();
       unsubscribeDeployment();
       unsubscribeEvents();
+      unsubscribeLogs();
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
@@ -454,6 +465,9 @@
     deployError = "";
     result = null;
 
+    // 배포 로그 명시적으로 초기화
+    clearDeploymentLogs();
+
     // 1. 화면 전환 먼저 (즉시 사용자에게 피드백)
     deploymentEvents.set({
       events: [],
@@ -520,6 +534,9 @@
     } catch (error) {
       deployError = error instanceof Error ? error.message : "배포 시작에 실패했습니다.";
       console.error("Deployment start error:", error);
+
+      // 에러 발생 시 배포 로그도 초기화
+      clearDeploymentLogs();
 
       // 에러 발생 시 상태 리셋
       deploymentEvents.set({
@@ -811,7 +828,7 @@
       hasError={events.hasError}
       isConnected={events.isConnected}
       isComplete={events.isComplete}
-      events={events.events}
+      events={logs}
       deploymentId={currentDeploymentState.deploymentId || ""}
       {result}
       onReset={() => {
@@ -821,6 +838,9 @@
           rocketSound.currentTime = 0;
           rocketSound = null;
         }
+
+        // 배포 로그 명시적으로 초기화
+        clearDeploymentLogs();
 
         // 배포 상태 초기화 및 localStorage에서 제거
         currentDeployment.set({ deploymentId: null, isActive: false });
